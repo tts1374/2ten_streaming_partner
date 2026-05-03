@@ -112,6 +112,14 @@ Ph1の最小実演では、以下の2プロセスを想定する。
 python -m aituber_partner.app --config config/local.toml
 ```
 
+CLIは既定ではOllamaに接続せず、FakeInputSourceと決定的なプレースホルダー回答で閉ループを確認する。ローカルOllama経路を試す場合は、対象モデルをpullまたは起動済みにしたうえで以下を使う。
+
+```powershell
+uv run aituber-partner --use-ollama
+```
+
+この経路では入力安全判定と出力安全判定に`qwen3.5:4b`、通常回答生成に`qwen3:8b`を使い、Qwen系呼び出しには`think: false`を付ける。
+
 ### 4.2 Overlay Process
 
 役割:
