@@ -6,21 +6,42 @@ from collections.abc import AsyncIterator
 
 from aituber_partner.config import AppConfig
 from aituber_partner.inputs.base import InputSource
-from aituber_partner.models import GeneratedReply, OverlayState, ProcessedEvent, SafetyDecision
+from aituber_partner.llm.prompts import (
+    REPLY_SYSTEM_PROMPT,
+    SAFETY_SYSTEM_PROMPT,
+    build_input_safety_prompt,
+    build_output_safety_prompt,
+    build_reply_prompt,
+)
+from aituber_partner.llm.router import LLMRouter
+from aituber_partner.llm.safety import parse_safety_decision
+from aituber_partner.models import (
+    GeneratedReply,
+    InputEvent,
+    OverlayState,
+    ProcessedEvent,
+    SafetyDecision,
+)
 
 
 class LocalClosedLoopOrchestrator:
-    """Process normalized input events with deterministic placeholder decisions."""
+    """Process normalized input events through the local closed loop."""
 
-    def __init__(self, config: AppConfig, input_source: InputSource) -> None:
+    def __init__(
+        self,
+        config: AppConfig,
+        input_source: InputSource,
+        llm_router: LLMRouter | None = None,
+    ) -> None:
         self._config = config
         self._input_source = input_source
+        self._llm_router = llm_router
         self.overlay_state = OverlayState()
 
     async def run_once_per_event(self) -> AsyncIterator[ProcessedEvent]:
         async for event in self._input_source.events():
             self.overlay_state = OverlayState(status="thinking", text="")
-            safety = self._classify_safety(event.text)
+            safety = await self._classify_safety(event)
 
             if safety.status in {"ignore", "block"}:
                 self.overlay_state = OverlayState(status="idle", text="")
@@ -32,21 +53,79 @@ class LocalClosedLoopOrchestrator:
                 )
                 continue
 
+            reply = await self._generate_reply(event, safety)
+            output_safety = await self._classify_output_safety(reply.text)
+            if output_safety.status in {"ignore", "block"}:
+                self.overlay_state = OverlayState(status="idle", text="")
+                yield ProcessedEvent(
+                    input_event=event,
+                    safety=safety,
+                    output_safety=output_safety,
+                    reply=None,
+                    overlay=self.overlay_state,
+                )
+                continue
+
+            if output_safety.status == "deflect":
+                reply = GeneratedReply(
+                    text=self._build_safe_deflection(output_safety),
+                    generation_model=reply.generation_model,
+                    latency_ms=reply.latency_ms,
+                )
+
+            self.overlay_state = OverlayState(status="speaking", text=reply.text)
+            yield ProcessedEvent(
+                input_event=event,
+                safety=safety,
+                output_safety=output_safety,
+                reply=reply,
+                overlay=self.overlay_state,
+            )
+
+    async def _classify_safety(self, event: InputEvent) -> SafetyDecision:
+        if self._llm_router is None:
+            return self._classify_placeholder_safety(event.text)
+
+        response = await self._llm_router.generate(
+            purpose="safety",
+            system=SAFETY_SYSTEM_PROMPT,
+            prompt=build_input_safety_prompt(event),
+        )
+        return parse_safety_decision(response.text)
+
+    async def _generate_reply(self, event: InputEvent, safety: SafetyDecision) -> GeneratedReply:
+        if self._llm_router is None:
             reply_text = self._build_placeholder_reply(event.text, safety)
             reply = GeneratedReply(
                 text=reply_text,
                 generation_model=self._config.models.reply,
                 latency_ms=0,
             )
-            self.overlay_state = OverlayState(status="speaking", text=reply.text)
-            yield ProcessedEvent(
-                input_event=event,
-                safety=safety,
-                reply=reply,
-                overlay=self.overlay_state,
-            )
+            return reply
 
-    def _classify_safety(self, text: str) -> SafetyDecision:
+        response = await self._llm_router.generate(
+            purpose="reply",
+            system=REPLY_SYSTEM_PROMPT,
+            prompt=build_reply_prompt(event, safety),
+        )
+        return GeneratedReply(
+            text=response.text,
+            generation_model=response.model,
+            latency_ms=response.latency_ms,
+        )
+
+    async def _classify_output_safety(self, reply_text: str) -> SafetyDecision:
+        if self._llm_router is None:
+            return SafetyDecision(status="allow", reasons=["placeholder_allow"], confidence=0.5)
+
+        response = await self._llm_router.generate(
+            purpose="safety",
+            system=SAFETY_SYSTEM_PROMPT,
+            prompt=build_output_safety_prompt(reply_text),
+        )
+        return parse_safety_decision(response.text)
+
+    def _classify_placeholder_safety(self, text: str) -> SafetyDecision:
         unsafe_markers = ("住所", "電話番号", "殺す", "死ね")
         if any(marker in text for marker in unsafe_markers):
             return SafetyDecision(
@@ -65,3 +144,7 @@ class LocalClosedLoopOrchestrator:
             trimmed = f"{trimmed[:41]}..."
         return f"コメントありがとう！「{trimmed}」いい視点だね。"
 
+    @staticmethod
+    def _build_safe_deflection(safety: SafetyDecision) -> str:
+        safe_topic = safety.safe_topic or "音ゲー配信"
+        return f"{safe_topic}の話に戻そっか。"

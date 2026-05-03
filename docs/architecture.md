@@ -163,6 +163,10 @@ YouTube APIやSTTが未実装でもPoCを進められるよう、最初に`FakeI
 8. OBS字幕状態を更新する。
 9. 全判断と出力を保存する。
 
+初期実装では、`LocalClosedLoopOrchestrator`に`LLMRouter`を注入した場合だけOllama経路を使う。未注入時はCLIと単体テストがローカル依存なしで動くよう、決定的なプレースホルダー経路を維持する。
+
+LLM経路では、入力安全判定、回答生成、出力安全判定の順に実行する。安全判定JSONのパース失敗は`block`として扱い、回答生成または字幕更新へ進めない。`deflect`の場合は安全な話題へ寄せた短い回答を生成する。
+
 ### 5.4 LLM Router
 
 Ollamaモデルの役割境界を固定し、呼び出しログに残す。
@@ -267,6 +271,17 @@ class OverlayState(BaseModel):
     detail: str | None = None
 ```
 
+### 6.5 ProcessedEvent
+
+```python
+class ProcessedEvent(BaseModel):
+    input_event: InputEvent
+    safety: SafetyDecision
+    output_safety: SafetyDecision | None = None
+    reply: GeneratedReply | None
+    overlay: OverlayState
+```
+
 ## 7. SQLite初期テーブル
 
 初期テーブル候補:
@@ -368,4 +383,3 @@ audio_dir = "data/audio"
 - Qwen3-TTSの本格導入。
 - 長期記憶の自動更新と人格反映。
 - 画像解析を常時リアルタイム経路へ入れること。
-

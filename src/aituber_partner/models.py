@@ -58,6 +58,6 @@ class OverlayState(BaseModel):
 class ProcessedEvent(BaseModel):
     input_event: InputEvent
     safety: SafetyDecision
+    output_safety: SafetyDecision | None = None
     reply: GeneratedReply | None
     overlay: OverlayState
-
