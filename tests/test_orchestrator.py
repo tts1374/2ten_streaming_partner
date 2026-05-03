@@ -19,9 +19,18 @@ class SequenceLLMClient:
         return LLMResponse(model=llm_request.model, text=text, latency_ms=12)
 
 
+class ProcessedEventRecorder:
+    def __init__(self) -> None:
+        self.records = []
+
+    def record_processed_event(self, processed) -> None:
+        self.records.append(processed)
+
+
 def build_orchestrator_with_llm(
     responses: list[str],
     source: FakeInputSource | None = None,
+    use_local_output_guard: bool = False,
 ) -> tuple[LocalClosedLoopOrchestrator, SequenceLLMClient]:
     config = AppConfig()
     client = SequenceLLMClient(responses)
@@ -30,6 +39,7 @@ def build_orchestrator_with_llm(
         config=config,
         input_source=source or FakeInputSource.from_texts(["ナイス精度！"]),
         llm_router=router,
+        use_local_output_guard=use_local_output_guard,
     )
     return orchestrator, client
 
@@ -149,3 +159,58 @@ async def test_output_safety_block_drops_generated_reply_before_overlay() -> Non
     assert results[0].overlay.status == "idle"
     assert results[0].overlay.text == ""
     assert [request.purpose for request in client.requests] == ["safety", "reply", "safety"]
+
+
+@pytest.mark.asyncio
+async def test_local_output_guard_skips_final_llm_safety_call() -> None:
+    orchestrator, client = build_orchestrator_with_llm(
+        [
+            '{"status":"allow","reasons":["safe"],"safe_topic":null,"confidence":0.9}',
+            "いい流れ！このままリズム乗っていこ！",
+        ],
+        use_local_output_guard=True,
+    )
+
+    results = [result async for result in orchestrator.run_once_per_event()]
+
+    assert results[0].output_safety is not None
+    assert results[0].output_safety.status == "allow"
+    assert results[0].output_safety.reasons == ["local_output_guard_allow"]
+    assert results[0].reply is not None
+    assert results[0].overlay.status == "speaking"
+    assert [request.purpose for request in client.requests] == ["safety", "reply"]
+
+
+@pytest.mark.asyncio
+async def test_local_output_guard_blocks_unsafe_marker_before_overlay() -> None:
+    orchestrator, client = build_orchestrator_with_llm(
+        [
+            '{"status":"allow","reasons":["safe"],"safe_topic":null,"confidence":0.9}',
+            "電話番号を出してね",
+        ],
+        use_local_output_guard=True,
+    )
+
+    results = [result async for result in orchestrator.run_once_per_event()]
+
+    assert results[0].output_safety is not None
+    assert results[0].output_safety.status == "block"
+    assert results[0].reply is None
+    assert results[0].overlay.status == "idle"
+    assert [request.purpose for request in client.requests] == ["safety", "reply"]
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_records_processed_event_when_recorder_is_injected() -> None:
+    source = FakeInputSource.from_texts(["ナイス精度！"])
+    recorder = ProcessedEventRecorder()
+    orchestrator = LocalClosedLoopOrchestrator(
+        config=AppConfig(),
+        input_source=source,
+        recorder=recorder,
+    )
+
+    results = [result async for result in orchestrator.run_once_per_event()]
+
+    assert recorder.records == results
+    assert recorder.records[0].input_event.text == "ナイス精度！"

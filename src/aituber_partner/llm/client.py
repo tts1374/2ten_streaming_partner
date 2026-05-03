@@ -33,6 +33,34 @@ class LLMClient(Protocol):
         """Generate text for a prepared LLM request."""
 
 
+class LLMCallRecorder(Protocol):
+    def record_llm_call(
+        self,
+        llm_request: LLMRequest,
+        *,
+        response: LLMResponse | None = None,
+        error: str | None = None,
+    ) -> None:
+        """Persist one model call attempt."""
+
+
+class RecordingLLMClient:
+    """Wrap an LLM client and persist success/failure metadata."""
+
+    def __init__(self, client: LLMClient, recorder: LLMCallRecorder) -> None:
+        self._client = client
+        self._recorder = recorder
+
+    async def generate(self, llm_request: LLMRequest) -> LLMResponse:
+        try:
+            response = await self._client.generate(llm_request)
+        except Exception as exc:
+            self._recorder.record_llm_call(llm_request, error=str(exc))
+            raise
+        self._recorder.record_llm_call(llm_request, response=response)
+        return response
+
+
 class OllamaClient:
     """Small async wrapper around Ollama's generate endpoint."""
 
@@ -85,4 +113,3 @@ def _ollama_latency_ms(data: dict[str, Any]) -> int:
     if isinstance(total_duration, int):
         return max(0, total_duration // 1_000_000)
     return 0
-

@@ -7,12 +7,19 @@ def test_parser_defaults_to_placeholder_route() -> None:
     args = build_parser().parse_args([])
 
     assert args.use_ollama is False
+    assert args.fast_output_safety is False
 
 
 def test_parser_accepts_use_ollama_switch() -> None:
     args = build_parser().parse_args(["--use-ollama"])
 
     assert args.use_ollama is True
+
+
+def test_parser_accepts_fast_output_safety_switch() -> None:
+    args = build_parser().parse_args(["--fast-output-safety"])
+
+    assert args.fast_output_safety is True
 
 
 def test_build_llm_router_returns_none_without_ollama_switch() -> None:

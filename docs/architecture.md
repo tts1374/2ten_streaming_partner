@@ -120,6 +120,12 @@ uv run aituber-partner --use-ollama
 
 この経路では入力安全判定と出力安全判定に`qwen3.5:4b`、通常回答生成に`qwen3:8b`を使い、Qwen系呼び出しには`think: false`を付ける。
 
+低遅延確認では以下のように出力安全判定だけローカルguardへ切り替えられる。この場合、LLM呼び出しは入力安全判定と回答生成の2回になり、最終段ではthinking風テキスト、空文字、危険語を決定的にブロックする。
+
+```powershell
+uv run aituber-partner --use-ollama --fast-output-safety
+```
+
 ### 4.2 Overlay Process
 
 役割:
@@ -173,7 +179,9 @@ YouTube APIやSTTが未実装でもPoCを進められるよう、最初に`FakeI
 
 初期実装では、`LocalClosedLoopOrchestrator`に`LLMRouter`を注入した場合だけOllama経路を使う。未注入時はCLIと単体テストがローカル依存なしで動くよう、決定的なプレースホルダー経路を維持する。
 
-LLM経路では、入力安全判定、回答生成、出力安全判定の順に実行する。安全判定JSONのパース失敗は`block`として扱い、回答生成または字幕更新へ進めない。`deflect`の場合は安全な話題へ寄せた短い回答を生成する。
+LLM経路では、入力安全判定、回答生成、出力安全判定の順に実行する。安全判定JSONのパース失敗は`block`として扱い、回答生成または字幕更新へ進めない。`deflect`の場合は安全な話題へ寄せた短い回答を生成する。低遅延モードでは、出力安全判定のみローカルguardに差し替え、追加のLLM安全判定を省く。
+
+CLI実行では`config.storage.sqlite_path`のSQLite DBへ処理済みイベントを保存する。初期保存対象は、入力イベント、安全判定、生成回答、字幕状態、LLM呼び出しである。
 
 ### 5.4 LLM Router
 
@@ -304,6 +312,8 @@ class ProcessedEvent(BaseModel):
 - `overlay_events`
 
 `llm_calls`には、モデル名、用途、入力要約、出力要約、latency_ms、think指定、成功/失敗、エラー内容を保存する。これにより、`qwen3.5:9b`が通常コメント経路で呼ばれていないことや、Qwen系で`think: false`が指定されていることを検証できる。
+
+初期実装では`SQLiteStore`が`input_events`、`safety_decisions`、`generated_replies`、`overlay_events`、`llm_calls`を作成する。LLM呼び出しは`RecordingLLMClient`でラップした場合に成功・失敗を保存する。
 
 ## 8. 設定ファイル
 
