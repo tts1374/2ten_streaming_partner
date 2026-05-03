@@ -1,0 +1,22 @@
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.venv/
+venv/
+
+# Node
+node_modules/
+dist/
+
+# Local config and generated runtime data
+config/local.toml
+data/*
+!data/.gitkeep
+
+# Logs and generated media
+*.log
+*.wav
+*.mp3
