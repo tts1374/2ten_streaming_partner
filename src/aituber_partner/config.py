@@ -47,6 +47,10 @@ class YouTubeChatConfig(BaseModel):
     drop_symbol_heavy_messages: bool = True
     symbol_heavy_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
     drop_duplicate_text_per_poll: bool = True
+    recent_duplicate_text_window_seconds: float = Field(default=30.0, ge=0.0)
+    drop_repetitive_messages: bool = True
+    repetitive_text_threshold: float = Field(default=0.7, ge=0.0, le=1.0)
+    repetitive_text_min_length: int = Field(default=8, ge=1, le=200)
     skip_initial_history: bool = True
 
 

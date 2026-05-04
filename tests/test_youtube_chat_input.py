@@ -9,13 +9,18 @@ from aituber_partner.inputs import youtube_chat
 from aituber_partner.inputs.youtube_chat import YouTubeChatError, YouTubeChatInputSource
 
 
-def _message(message_id: str, text: str, author: str = "viewer") -> dict:
+def _message(
+    message_id: str,
+    text: str,
+    author: str = "viewer",
+    published_at: str = "2026-05-04T12:34:56Z",
+) -> dict:
     return {
         "id": message_id,
         "snippet": {
             "type": "textMessageEvent",
             "displayMessage": text,
-            "publishedAt": "2026-05-04T12:34:56Z",
+            "publishedAt": published_at,
         },
         "authorDetails": {
             "displayName": author,
@@ -153,6 +158,103 @@ async def test_youtube_chat_source_filters_spammy_messages_before_selection() ->
     events = [event async for event in source.events()]
 
     assert [event.text for event in events] == ["音量大丈夫？", "見えてる？"]
+
+
+@pytest.mark.asyncio
+async def test_youtube_chat_source_filters_repetitive_text_messages() -> None:
+    payloads = [
+        {
+            "nextPageToken": "page-2",
+            "pollingIntervalMillis": 1000,
+            "items": [
+                _message("msg-1", "\u200b\u200bああああああああああああああああ"),
+                _message("msg-2", "いいいいいいいいいいいいいいい"),
+                _message("msg-3", "いい感じに聞こえてる"),
+            ],
+            "offlineAt": "2026-05-04T12:35:00Z",
+        }
+    ]
+
+    source = YouTubeChatInputSource(
+        YouTubeChatConfig(live_chat_id="live-chat-1", skip_initial_history=False),
+        api_key="api-key",
+        fetch_json=lambda _url, _timeout: payloads.pop(0),
+    )
+
+    events = [event async for event in source.events()]
+
+    assert [event.text for event in events] == ["いい感じに聞こえてる"]
+
+
+@pytest.mark.asyncio
+async def test_youtube_chat_source_filters_recent_duplicate_text_across_polls() -> None:
+    payloads = [
+        {
+            "nextPageToken": "page-2",
+            "pollingIntervalMillis": 1,
+            "items": [
+                _message("msg-1", "\u200b\u200b音量大丈夫です"),
+            ],
+        },
+        {
+            "nextPageToken": "page-3",
+            "pollingIntervalMillis": 1,
+            "items": [
+                _message("msg-2", "音量大丈夫です", published_at="2026-05-04T12:35:01Z"),
+                _message("msg-3", "別のコメント", published_at="2026-05-04T12:35:02Z"),
+            ],
+            "offlineAt": "2026-05-04T12:35:03Z",
+        },
+    ]
+
+    source = YouTubeChatInputSource(
+        YouTubeChatConfig(
+            live_chat_id="live-chat-1",
+            min_poll_interval_seconds=0.001,
+            skip_initial_history=False,
+            recent_duplicate_text_window_seconds=30.0,
+        ),
+        api_key="api-key",
+        fetch_json=lambda _url, _timeout: payloads.pop(0),
+    )
+
+    events = [event async for event in source.events()]
+
+    assert [event.text for event in events] == ["\u200b\u200b音量大丈夫です", "別のコメント"]
+
+
+@pytest.mark.asyncio
+async def test_youtube_chat_source_allows_recent_duplicate_text_after_window() -> None:
+    payloads = [
+        {
+            "nextPageToken": "page-2",
+            "pollingIntervalMillis": 1,
+            "items": [_message("msg-1", "音量大丈夫です")],
+        },
+        {
+            "nextPageToken": "page-3",
+            "pollingIntervalMillis": 1,
+            "items": [
+                _message("msg-2", "音量大丈夫です", published_at="2026-05-04T12:35:40Z"),
+            ],
+            "offlineAt": "2026-05-04T12:35:41Z",
+        },
+    ]
+
+    source = YouTubeChatInputSource(
+        YouTubeChatConfig(
+            live_chat_id="live-chat-1",
+            min_poll_interval_seconds=0.001,
+            skip_initial_history=False,
+            recent_duplicate_text_window_seconds=30.0,
+        ),
+        api_key="api-key",
+        fetch_json=lambda _url, _timeout: payloads.pop(0),
+    )
+
+    events = [event async for event in source.events()]
+
+    assert [event.text for event in events] == ["音量大丈夫です", "音量大丈夫です"]
 
 
 @pytest.mark.asyncio

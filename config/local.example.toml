@@ -35,6 +35,10 @@ max_message_length = 160
 drop_symbol_heavy_messages = true
 symbol_heavy_threshold = 0.6
 drop_duplicate_text_per_poll = true
+recent_duplicate_text_window_seconds = 30.0
+drop_repetitive_messages = true
+repetitive_text_threshold = 0.7
+repetitive_text_min_length = 8
 skip_initial_history = true
 
 [storage]

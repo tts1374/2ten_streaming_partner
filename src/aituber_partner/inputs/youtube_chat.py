@@ -4,9 +4,10 @@ from __future__ import annotations
 
 import asyncio
 import json
+import unicodedata
 from collections import deque
 from collections.abc import AsyncIterator, Callable, Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlencode
@@ -54,6 +55,7 @@ class YouTubeChatInputSource:
         self._live_chat_id = config.live_chat_id
         self._seen_ids: deque[str] = deque(maxlen=seen_cache_size)
         self._seen_lookup: set[str] = set()
+        self._recent_text_seen_at: dict[str, datetime] = {}
 
     async def events(self) -> AsyncIterator[InputEvent]:
         live_chat_id = await self._resolve_live_chat_id()
@@ -145,6 +147,8 @@ class YouTubeChatInputSource:
             normalized_text = _normalize_chat_text(event.text)
             if len(event.text) > self._config.max_message_length:
                 continue
+            if self._is_recent_duplicate_text(normalized_text, event.timestamp):
+                continue
             if (
                 self._config.drop_duplicate_text_per_poll
                 and normalized_text
@@ -156,12 +160,52 @@ class YouTubeChatInputSource:
                 and _symbol_ratio(event.text) >= self._config.symbol_heavy_threshold
             ):
                 continue
+            if (
+                self._config.drop_repetitive_messages
+                and _is_repetitive_text(
+                    normalized_text,
+                    threshold=self._config.repetitive_text_threshold,
+                    min_length=self._config.repetitive_text_min_length,
+                )
+            ):
+                continue
 
             if normalized_text:
                 seen_texts.add(normalized_text)
+                self._remember_recent_text(normalized_text, event.timestamp)
             filtered_events.append(event)
 
         return filtered_events
+
+    def _is_recent_duplicate_text(self, normalized_text: str, timestamp: datetime) -> bool:
+        if (
+            not self._config.drop_duplicate_text_per_poll
+            or not normalized_text
+            or self._config.recent_duplicate_text_window_seconds <= 0
+        ):
+            return False
+
+        self._prune_recent_texts(timestamp)
+        seen_at = self._recent_text_seen_at.get(normalized_text)
+        if seen_at is None:
+            return False
+        return (timestamp - seen_at).total_seconds() <= self._config.recent_duplicate_text_window_seconds
+
+    def _remember_recent_text(self, normalized_text: str, timestamp: datetime) -> None:
+        if (
+            self._config.drop_duplicate_text_per_poll
+            and normalized_text
+            and self._config.recent_duplicate_text_window_seconds > 0
+        ):
+            self._recent_text_seen_at[normalized_text] = timestamp
+
+    def _prune_recent_texts(self, timestamp: datetime) -> None:
+        cutoff = timestamp - timedelta(seconds=self._config.recent_duplicate_text_window_seconds)
+        expired_texts = [
+            text for text, seen_at in self._recent_text_seen_at.items() if seen_at < cutoff
+        ]
+        for text in expired_texts:
+            self._recent_text_seen_at.pop(text, None)
 
     def _select_message_events(self, events: list[InputEvent]) -> list[InputEvent]:
         if len(events) <= self._config.max_selected_per_poll:
@@ -297,7 +341,12 @@ def _score_chat_event(event: InputEvent) -> int:
 
 
 def _normalize_chat_text(text: str) -> str:
-    return "".join(text.casefold().split())
+    normalized = unicodedata.normalize("NFKC", text.casefold())
+    return "".join(
+        char
+        for char in normalized
+        if not char.isspace() and not unicodedata.category(char).startswith("C")
+    )
 
 
 def _symbol_ratio(text: str) -> float:
@@ -306,6 +355,13 @@ def _symbol_ratio(text: str) -> float:
         return 1.0
     symbol_count = sum(1 for char in visible_chars if not char.isalnum())
     return symbol_count / len(visible_chars)
+
+
+def _is_repetitive_text(text: str, *, threshold: float, min_length: int) -> bool:
+    if len(text) < min_length:
+        return False
+    most_common_count = max(text.count(char) for char in set(text))
+    return most_common_count / len(text) >= threshold
 
 
 def _format_youtube_http_error(status_code: int, detail: str) -> str:

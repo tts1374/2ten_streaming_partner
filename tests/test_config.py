@@ -25,6 +25,10 @@ def test_default_config_uses_phase1_model_roles() -> None:
     assert config.youtube_chat.drop_symbol_heavy_messages is True
     assert config.youtube_chat.symbol_heavy_threshold == 0.6
     assert config.youtube_chat.drop_duplicate_text_per_poll is True
+    assert config.youtube_chat.recent_duplicate_text_window_seconds == 30.0
+    assert config.youtube_chat.drop_repetitive_messages is True
+    assert config.youtube_chat.repetitive_text_threshold == 0.7
+    assert config.youtube_chat.repetitive_text_min_length == 8
     assert config.youtube_chat.skip_initial_history is True
     assert config.runtime.idle_timeout_seconds == 30.0
     assert config.runtime.streamer_name == "つてん"
@@ -55,6 +59,10 @@ max_message_length = 80
 drop_symbol_heavy_messages = false
 symbol_heavy_threshold = 0.75
 drop_duplicate_text_per_poll = false
+recent_duplicate_text_window_seconds = 10.0
+drop_repetitive_messages = false
+repetitive_text_threshold = 0.8
+repetitive_text_min_length = 12
 skip_initial_history = false
 
 [runtime]
@@ -85,6 +93,10 @@ idle_topics = ["判定が光った話", "次の曲の見どころ"]
     assert config.youtube_chat.drop_symbol_heavy_messages is False
     assert config.youtube_chat.symbol_heavy_threshold == 0.75
     assert config.youtube_chat.drop_duplicate_text_per_poll is False
+    assert config.youtube_chat.recent_duplicate_text_window_seconds == 10.0
+    assert config.youtube_chat.drop_repetitive_messages is False
+    assert config.youtube_chat.repetitive_text_threshold == 0.8
+    assert config.youtube_chat.repetitive_text_min_length == 12
     assert config.youtube_chat.skip_initial_history is False
     assert config.runtime.idle_timeout_seconds == 12.5
     assert config.runtime.streamer_name == "配信者"
