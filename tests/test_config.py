@@ -15,6 +15,8 @@ def test_default_config_uses_phase1_model_roles() -> None:
     assert config.aivis.base_url == "http://127.0.0.1:10101"
     assert isinstance(config.aivis.voice_id, int)
     assert config.overlay.clear_after_speech_seconds == 2.5
+    assert config.runtime.idle_timeout_seconds == 30.0
+    assert config.runtime.idle_topics
 
 
 def test_load_config_overrides_toml_values(tmp_path: Path) -> None:
@@ -27,6 +29,7 @@ clear_after_speech_seconds = 1.25
 
 [runtime]
 idle_timeout_seconds = 12.5
+idle_topics = ["判定が光った話", "次の曲の見どころ"]
 """.lstrip(),
         encoding="utf-8",
         newline="\n",
@@ -37,6 +40,7 @@ idle_timeout_seconds = 12.5
     assert config.overlay.port == 9999
     assert config.overlay.clear_after_speech_seconds == 1.25
     assert config.runtime.idle_timeout_seconds == 12.5
+    assert config.runtime.idle_topics == ["判定が光った話", "次の曲の見どころ"]
 
 
 def test_load_config_requires_existing_file(tmp_path: Path) -> None:

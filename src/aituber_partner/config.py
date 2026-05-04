@@ -40,6 +40,14 @@ class StorageConfig(BaseModel):
 
 class RuntimeConfig(BaseModel):
     idle_timeout_seconds: float = Field(default=30.0, gt=0)
+    idle_topics: list[str] = Field(
+        default_factory=lambda: [
+            "最近プレイした音ゲー曲で、判定が光った瞬間の話",
+            "今日の配信で次に注目したい譜面の見どころ",
+            "リズムに乗りやすい曲の好きなポイント",
+        ],
+        min_length=1,
+    )
 
 
 class AppConfig(BaseModel):

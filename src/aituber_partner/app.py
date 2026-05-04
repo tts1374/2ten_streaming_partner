@@ -8,6 +8,7 @@ from pathlib import Path
 
 from aituber_partner.config import AppConfig, load_config
 from aituber_partner.inputs.fake import FakeInputSource
+from aituber_partner.inputs.idle_topic import IdleTopicInputSource
 from aituber_partner.llm.client import LLMCallRecorder, OllamaClient, RecordingLLMClient
 from aituber_partner.llm.router import LLMRouter
 from aituber_partner.orchestrator import LocalClosedLoopOrchestrator
@@ -105,6 +106,11 @@ async def run(
             "今日の判定、かなり光ってますね！",
             "この曲のサビ、リズム取りやすいですか？",
         ]
+    )
+    source = IdleTopicInputSource(
+        source,
+        timeout_seconds=config.runtime.idle_timeout_seconds,
+        topics=config.runtime.idle_topics,
     )
     broadcaster = OverlayStateBroadcaster()
     runner = OverlayServerRunner(config.overlay, broadcaster) if serve_overlay else None

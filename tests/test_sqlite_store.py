@@ -98,6 +98,38 @@ def test_record_llm_call_persists_model_purpose_think_and_latency(tmp_path) -> N
     assert json.loads(row["request_json"])["keep_alive"] == "30m"
 
 
+def test_record_processed_idle_topic_event_persists_source_and_metadata(tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    store = SQLiteStore(db_path)
+    event = InputEvent(
+        source="idle_topic",
+        text="静かな間に、次の譜面の見どころを話す",
+        author="idle-topic",
+        metadata={"reason": "inactivity_timeout", "timeout_seconds": 30.0},
+    )
+    reply = GeneratedReply(
+        text="次の配置も見どころだね！",
+        generation_model="qwen3:8b",
+        latency_ms=0,
+    )
+    processed = ProcessedEvent(
+        input_event=event,
+        safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
+        output_safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
+        reply=reply,
+        overlay=OverlayState(status="speaking", text=reply.text),
+    )
+
+    store.record_processed_event(processed)
+
+    input_row = fetch_one(db_path, "SELECT * FROM input_events")
+    assert input_row["source"] == "idle_topic"
+    assert json.loads(input_row["metadata_json"]) == {
+        "reason": "inactivity_timeout",
+        "timeout_seconds": 30.0,
+    }
+
+
 def test_record_llm_call_persists_failures_closed_for_diagnostics(tmp_path) -> None:
     db_path = tmp_path / "app.db"
     store = SQLiteStore(db_path)

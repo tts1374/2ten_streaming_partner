@@ -16,7 +16,8 @@ class FakeInputSource:
     @classmethod
     def from_texts(cls, texts: Iterable[str], delay_seconds: float = 0.0) -> "FakeInputSource":
         return cls(
-            InputEvent(source="youtube_chat", text=text, author="fake-viewer") for text in texts
+            (InputEvent(source="youtube_chat", text=text, author="fake-viewer") for text in texts),
+            delay_seconds=delay_seconds,
         )
 
     async def events(self) -> AsyncIterator[InputEvent]:
@@ -24,4 +25,3 @@ class FakeInputSource:
             if self._delay_seconds > 0:
                 await asyncio.sleep(self._delay_seconds)
             yield event
-

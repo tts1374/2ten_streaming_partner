@@ -4,6 +4,7 @@ import pytest
 
 from aituber_partner.config import AppConfig
 from aituber_partner.inputs.fake import FakeInputSource
+from aituber_partner.inputs.idle_topic import IdleTopicInputSource
 from aituber_partner.llm.client import LLMRequest, LLMResponse
 from aituber_partner.llm.router import LLMRouter
 from aituber_partner.models import GeneratedReply, InputEvent, SpeechJob
@@ -103,6 +104,28 @@ async def test_fake_source_flows_to_placeholder_reply() -> None:
     assert results[0].safety.status == "allow"
     assert results[0].reply is not None
     assert results[0].reply.generation_model == "qwen3:8b"
+    assert results[0].overlay.status == "speaking"
+
+
+@pytest.mark.asyncio
+async def test_idle_topic_event_flows_to_placeholder_reply() -> None:
+    source = IdleTopicInputSource(
+        FakeInputSource.from_texts(["通常コメント"], delay_seconds=0.02),
+        timeout_seconds=0.001,
+        topics=["静かな間に、次の譜面の見どころを話す"],
+        max_idle_events=1,
+    )
+    orchestrator = LocalClosedLoopOrchestrator(config=AppConfig(), input_source=source)
+
+    results = []
+    async for result in orchestrator.run_once_per_event():
+        results.append(result)
+        if len(results) == 1:
+            break
+
+    assert results[0].input_event.source == "idle_topic"
+    assert results[0].safety.status == "allow"
+    assert results[0].reply is not None
     assert results[0].overlay.status == "speaking"
 
 

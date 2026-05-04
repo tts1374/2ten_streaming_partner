@@ -114,6 +114,8 @@ python -m aituber_partner.app --config config/local.toml
 
 CLIは既定ではOllamaに接続せず、FakeInputSourceと決定的なプレースホルダー回答で閉ループを確認する。ローカルOllama経路を試す場合は、対象モデルをpullまたは起動済みにしたうえで以下を使う。
 
+入力ソースは`IdleTopicInputSource`で包まれ、`config.runtime.idle_timeout_seconds`の間に通常入力が来ない場合は`source="idle_topic"`の`InputEvent`を生成する。idle topicも通常入力と同じ安全判定、回答生成、TTS、OBS字幕、SQLite保存経路を通る。実チャットやSTTのように長時間待機する入力ソースでは、無言時間の穴埋めとして設定済みトピックが順番に使われる。
+
 ```powershell
 uv run aituber-partner --use-ollama
 ```
@@ -373,6 +375,13 @@ clear_after_speech_seconds = 2.5
 sqlite_path = "data/app.db"
 lancedb_path = "data/lancedb"
 audio_dir = "data/audio"
+
+[runtime]
+idle_timeout_seconds = 30.0
+idle_topics = [
+  "最近プレイした音ゲー曲で、判定が光った瞬間の話",
+  "今日の配信で次に注目したい譜面の見どころ",
+]
 ```
 
 ## 9. 最小PoCの実装順
