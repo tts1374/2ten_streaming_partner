@@ -38,7 +38,9 @@ lancedb_path = "data/lancedb"
 audio_dir = "data/audio"
 
 [runtime]
+streamer_name = "つてん"
 idle_timeout_seconds = 30.0
+idle_repeat_interval_seconds = 120.0
 idle_topics = [
   "最近プレイした音ゲー曲で、判定が光った瞬間の話",
   "今日の配信で次に注目したい譜面の見どころ",

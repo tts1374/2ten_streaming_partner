@@ -52,7 +52,9 @@ class StorageConfig(BaseModel):
 
 
 class RuntimeConfig(BaseModel):
+    streamer_name: str = Field(default="つてん", min_length=1)
     idle_timeout_seconds: float = Field(default=30.0, gt=0)
+    idle_repeat_interval_seconds: float = Field(default=120.0, gt=0)
     idle_topics: list[str] = Field(
         default_factory=lambda: [
             "最近プレイした音ゲー曲で、判定が光った瞬間の話",

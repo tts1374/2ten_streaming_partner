@@ -154,7 +154,11 @@ class LocalClosedLoopOrchestrator:
         response = await self._llm_router.generate(
             purpose="reply",
             system=REPLY_SYSTEM_PROMPT,
-            prompt=build_reply_prompt(event, safety),
+            prompt=build_reply_prompt(
+                event,
+                safety,
+                streamer_name=self._config.runtime.streamer_name,
+            ),
         )
         return GeneratedReply(
             text=response.text,

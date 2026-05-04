@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from aituber_partner.inputs.fake import FakeInputSource
@@ -8,6 +10,13 @@ class FailingInputSource:
     async def events(self):
         raise RuntimeError("upstream failed")
         yield
+
+
+class HoldingInputSource:
+    async def events(self):
+        async for event in FakeInputSource.from_texts(["音量大丈夫"], delay_seconds=0.001).events():
+            yield event
+        await asyncio.Event().wait()
 
 
 @pytest.mark.asyncio
@@ -28,8 +37,49 @@ async def test_idle_topic_source_emits_topic_after_inactivity() -> None:
     assert events[0].source == "idle_topic"
     assert events[0].text == "次の曲の見どころを話す"
     assert events[0].metadata["reason"] == "inactivity_timeout"
+    assert events[0].metadata["repeat_interval_seconds"] == 0.001
     assert events[1].source == "youtube_chat"
     assert events[1].text == "通常コメント"
+
+
+@pytest.mark.asyncio
+async def test_idle_topic_source_uses_longer_repeat_interval_after_idle_topic() -> None:
+    source = IdleTopicInputSource(
+        FakeInputSource.from_texts(["通常コメント"], delay_seconds=0.004),
+        timeout_seconds=0.001,
+        repeat_interval_seconds=0.02,
+        topics=["静かな時の話題"],
+    )
+
+    events = []
+    async for event in source.events():
+        events.append(event)
+        if len(events) == 2:
+            break
+
+    assert [event.source for event in events] == ["idle_topic", "youtube_chat"]
+
+
+@pytest.mark.asyncio
+async def test_idle_topic_source_includes_recent_input_metadata() -> None:
+    source = IdleTopicInputSource(
+        HoldingInputSource(),
+        timeout_seconds=0.01,
+        repeat_interval_seconds=0.001,
+        topics=["音量確認から話を広げる"],
+        max_idle_events=1,
+    )
+
+    events = []
+    async for event in source.events():
+        events.append(event)
+        if len(events) == 2:
+            break
+
+    assert [event.source for event in events] == ["youtube_chat", "idle_topic"]
+    assert events[1].metadata["recent_input_source"] == "youtube_chat"
+    assert events[1].metadata["recent_input_author"] == "fake-viewer"
+    assert events[1].metadata["recent_input_text"] == "音量大丈夫"
 
 
 @pytest.mark.asyncio
@@ -51,6 +101,16 @@ def test_idle_topic_source_requires_topics() -> None:
             FakeInputSource.from_texts([]),
             timeout_seconds=0.01,
             topics=[],
+        )
+
+
+def test_idle_topic_source_requires_positive_repeat_interval() -> None:
+    with pytest.raises(ValueError):
+        IdleTopicInputSource(
+            FakeInputSource.from_texts([]),
+            timeout_seconds=0.01,
+            repeat_interval_seconds=0,
+            topics=["静かな時の話題"],
         )
 
 

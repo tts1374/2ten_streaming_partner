@@ -134,6 +134,7 @@ def build_input_source(
     return IdleTopicInputSource(
         source,
         timeout_seconds=config.runtime.idle_timeout_seconds,
+        repeat_interval_seconds=config.runtime.idle_repeat_interval_seconds,
         topics=config.runtime.idle_topics,
     )
 

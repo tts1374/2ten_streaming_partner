@@ -22,6 +22,8 @@ def test_default_config_uses_phase1_model_roles() -> None:
     assert config.youtube_chat.api_key_env == "YOUTUBE_API_KEY"
     assert config.youtube_chat.skip_initial_history is True
     assert config.runtime.idle_timeout_seconds == 30.0
+    assert config.runtime.streamer_name == "つてん"
+    assert config.runtime.idle_repeat_interval_seconds == 120.0
     assert config.runtime.idle_topics
 
 
@@ -46,7 +48,9 @@ max_results = 200
 skip_initial_history = false
 
 [runtime]
+streamer_name = "配信者"
 idle_timeout_seconds = 12.5
+idle_repeat_interval_seconds = 75.0
 idle_topics = ["判定が光った話", "次の曲の見どころ"]
 """.lstrip(),
         encoding="utf-8",
@@ -68,6 +72,8 @@ idle_topics = ["判定が光った話", "次の曲の見どころ"]
     assert config.youtube_chat.max_results == 200
     assert config.youtube_chat.skip_initial_history is False
     assert config.runtime.idle_timeout_seconds == 12.5
+    assert config.runtime.streamer_name == "配信者"
+    assert config.runtime.idle_repeat_interval_seconds == 75.0
     assert config.runtime.idle_topics == ["判定が光った話", "次の曲の見どころ"]
 
 

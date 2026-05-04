@@ -114,7 +114,7 @@ python -m aituber_partner.app --config config/local.toml
 
 CLIは既定ではOllamaに接続せず、FakeInputSourceと決定的なプレースホルダー回答で閉ループを確認する。ローカルOllama経路を試す場合は、対象モデルをpullまたは起動済みにしたうえで以下を使う。
 
-入力ソースは`IdleTopicInputSource`で包まれ、`config.runtime.idle_timeout_seconds`の間に通常入力が来ない場合は`source="idle_topic"`の`InputEvent`を生成する。idle topicも通常入力と同じ安全判定、回答生成、TTS、OBS字幕、SQLite保存経路を通る。実チャットやSTTのように長時間待機する入力ソースでは、無言時間の穴埋めとして設定済みトピックが順番に使われる。
+入力ソースは`IdleTopicInputSource`で包まれ、`config.runtime.idle_timeout_seconds`の間に通常入力が来ない場合は`source="idle_topic"`の`InputEvent`を生成する。idle topicも通常入力と同じ安全判定、回答生成、TTS、OBS字幕、SQLite保存経路を通る。実チャットやSTTのように長時間待機する入力ソースでは、無言時間の穴埋めとして設定済みトピックが順番に使われる。idle topicを一度出した後は`config.runtime.idle_repeat_interval_seconds`だけ待ってから次のidle topicを出すため、コメントが少ない配信でも同じ間隔で話題を連発しにくい。
 
 YouTube Live Chatを実入力にする場合は、`config/local.toml`の`[youtube_chat]`に`live_chat_id`または`video_id`を設定し、`api_key_env`で指定した環境変数、既定では`YOUTUBE_API_KEY`にYouTube Data APIキーを入れてから`--use-youtube-chat`を付ける。`video_id`を指定した場合は、起動時にYouTube Data APIの`videos?part=liveStreamingDetails`から`activeLiveChatId`を解決する。CLIでは`--youtube-video-id`で一時的に動画IDを上書きできる。初期実装はYouTube Live Streaming APIの`liveChat/messages`を標準ライブラリでポーリングし、`nextPageToken`、`pollingIntervalMillis`、メッセージIDの重複排除を使って新規コメントだけを`InputEvent(source="youtube_chat")`へ正規化する。`skip_initial_history = true`が既定なので、起動直後に返る過去コメントには反応せず、次ページ以降の新規コメントを拾う。
 
@@ -230,6 +230,8 @@ YouTube APIやSTTが未実装でもPoCを進められるよう、最初に`FakeI
 初期実装では、`LocalClosedLoopOrchestrator`に`LLMRouter`を注入した場合だけOllama経路を使う。未注入時はCLIと単体テストがローカル依存なしで動くよう、決定的なプレースホルダー経路を維持する。
 
 LLM経路では、入力安全判定、回答生成、出力安全判定の順に実行する。安全判定JSONのパース失敗は`block`として扱い、回答生成または字幕更新へ進めない。`deflect`の場合は安全な話題へ寄せた短い回答を生成する。低遅延モードでは、出力安全判定のみローカルguardに差し替え、追加のLLM安全判定を省く。
+
+回答生成では入力sourceごとに会話目的を変える。`voice`は人間配信者の発言として扱い、配信者へ直接返す。`youtube_chat`は視聴者コメントとして扱い、コメント内容を配信者に取り次ぎ、必要な場合だけ配信者に向けて話題を広げる。`idle_topic`は独り言ではなく、直近の通常入力メタデータがある場合はそれに接続した短い質問または話題として配信者へ投げかける。配信者の呼び名は`config.runtime.streamer_name`で設定し、既定では「つてん」としてプロンプトに渡す。
 
 CLI実行では`config.storage.sqlite_path`のSQLite DBへ処理済みイベントを保存する。初期保存対象は、入力イベント、安全判定、生成回答、字幕状態、LLM呼び出しである。
 
@@ -411,7 +413,9 @@ lancedb_path = "data/lancedb"
 audio_dir = "data/audio"
 
 [runtime]
+streamer_name = "つてん"
 idle_timeout_seconds = 30.0
+idle_repeat_interval_seconds = 120.0
 idle_topics = [
   "最近プレイした音ゲー曲で、判定が光った瞬間の話",
   "今日の配信で次に注目したい譜面の見どころ",
