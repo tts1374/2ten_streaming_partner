@@ -101,6 +101,26 @@ def build_parser() -> argparse.ArgumentParser:
         default=20,
         help="Maximum number of recent speech jobs to display.",
     )
+    inspect_safety_parser = subparsers.add_parser(
+        "inspect-safety",
+        help="Show recent input/output safety decisions from SQLite.",
+    )
+    inspect_safety_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of recent safety decisions to display.",
+    )
+    inspect_overlay_parser = subparsers.add_parser(
+        "inspect-overlay",
+        help="Show recent subtitle overlay events from SQLite.",
+    )
+    inspect_overlay_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of recent overlay events to display.",
+    )
     demo_parser = subparsers.add_parser(
         "demo-overlay",
         help="Serve the OBS overlay and show a demo subtitle for visual adjustment.",
@@ -339,6 +359,66 @@ def inspect_speech(config: AppConfig, *, limit: int) -> None:
     )
 
 
+def inspect_safety(config: AppConfig, *, limit: int) -> None:
+    store = SQLiteStore(config.storage.sqlite_path)
+    rows = store.fetch_recent_safety_decisions(limit=max(1, limit))
+    if not rows:
+        print(f"No safety decisions found in {store.path}.")
+        return
+
+    headers = ["stage", "status", "source", "input", "reasons", "confidence", "created_at"]
+    widths = {
+        "stage": 8,
+        "status": 10,
+        "source": 12,
+        "input": 32,
+        "reasons": 36,
+        "confidence": 10,
+        "created_at": 25,
+    }
+    _print_table(
+        headers,
+        widths,
+        [
+            {
+                "stage": row["stage"],
+                "status": row["status"],
+                "source": row["input_source"] or "",
+                "input": _truncate(row["input_text"] or "", widths["input"]),
+                "reasons": _truncate(row["reasons_json"], widths["reasons"]),
+                "confidence": f"{row['confidence']:.2f}",
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ],
+    )
+
+
+def inspect_overlay(config: AppConfig, *, limit: int) -> None:
+    store = SQLiteStore(config.storage.sqlite_path)
+    rows = store.fetch_recent_overlay_events(limit=max(1, limit))
+    if not rows:
+        print(f"No overlay events found in {store.path}.")
+        return
+
+    headers = ["status", "source", "text", "detail", "updated_at"]
+    widths = {"status": 10, "source": 12, "text": 44, "detail": 32, "updated_at": 25}
+    _print_table(
+        headers,
+        widths,
+        [
+            {
+                "status": row["status"],
+                "source": row["input_source"] or "",
+                "text": _truncate(row["text"], widths["text"]),
+                "detail": _truncate(row["detail"] or "", widths["detail"]),
+                "updated_at": row["updated_at"],
+            }
+            for row in rows
+        ],
+    )
+
+
 def _print_table(
     headers: list[str],
     widths: dict[str, int],
@@ -408,6 +488,12 @@ def main() -> None:
         return
     if args.command == "inspect-speech":
         inspect_speech(config, limit=args.limit)
+        return
+    if args.command == "inspect-safety":
+        inspect_safety(config, limit=args.limit)
+        return
+    if args.command == "inspect-overlay":
+        inspect_overlay(config, limit=args.limit)
         return
     if args.command == "demo-overlay":
         asyncio.run(

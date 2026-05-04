@@ -282,6 +282,55 @@ class SQLiteStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def fetch_recent_safety_decisions(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        self._ensure_initialized()
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT
+                    safety_decisions.id,
+                    safety_decisions.input_event_id,
+                    input_events.source AS input_source,
+                    input_events.text AS input_text,
+                    safety_decisions.stage,
+                    safety_decisions.status,
+                    safety_decisions.reasons_json,
+                    safety_decisions.safe_topic,
+                    safety_decisions.confidence,
+                    safety_decisions.created_at
+                FROM safety_decisions
+                LEFT JOIN input_events ON input_events.id = safety_decisions.input_event_id
+                ORDER BY safety_decisions.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fetch_recent_overlay_events(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        self._ensure_initialized()
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT
+                    overlay_events.id,
+                    overlay_events.input_event_id,
+                    input_events.source AS input_source,
+                    overlay_events.status,
+                    overlay_events.text,
+                    overlay_events.detail,
+                    overlay_events.updated_at
+                FROM overlay_events
+                LEFT JOIN input_events ON input_events.id = overlay_events.input_event_id
+                ORDER BY overlay_events.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def _insert_speech_job(
         self,
         connection: sqlite3.Connection,

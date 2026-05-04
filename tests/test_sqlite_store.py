@@ -238,3 +238,47 @@ def test_fetch_recent_speech_jobs_returns_status_and_error(tmp_path) -> None:
     assert rows[0]["status"] == "failed"
     assert rows[0]["voice_id"] == 888753760
     assert rows[0]["error"] == "AivisSpeech is not running"
+
+
+def test_fetch_recent_safety_decisions_includes_input_context(tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    store = SQLiteStore(db_path)
+    event = InputEvent(source="youtube_chat", text="これは拾える？", author="viewer")
+    processed = ProcessedEvent(
+        input_event=event,
+        safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
+        output_safety=SafetyDecision(status="deflect", reasons=["too_long"], confidence=0.7),
+        reply=None,
+        overlay=OverlayState(status="idle", text=""),
+    )
+    store.record_processed_event(processed)
+
+    rows = store.fetch_recent_safety_decisions(limit=2)
+
+    assert [row["stage"] for row in rows] == ["output", "input"]
+    assert rows[0]["input_event_id"] == event.id
+    assert rows[0]["input_source"] == "youtube_chat"
+    assert rows[0]["input_text"] == "これは拾える？"
+    assert rows[0]["status"] == "deflect"
+    assert json.loads(rows[0]["reasons_json"]) == ["too_long"]
+
+
+def test_fetch_recent_overlay_events_includes_input_context(tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    store = SQLiteStore(db_path)
+    event = InputEvent(source="idle_topic", text="次の話題", author="idle-topic")
+    processed = ProcessedEvent(
+        input_event=event,
+        safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
+        reply=None,
+        overlay=OverlayState(status="idle", text="", detail="waiting"),
+    )
+    store.record_processed_event(processed)
+
+    rows = store.fetch_recent_overlay_events(limit=1)
+
+    assert rows[0]["input_event_id"] == event.id
+    assert rows[0]["input_source"] == "idle_topic"
+    assert rows[0]["status"] == "idle"
+    assert rows[0]["text"] == ""
+    assert rows[0]["detail"] == "waiting"

@@ -78,6 +78,20 @@ def test_parser_accepts_inspect_speech_command() -> None:
     assert args.limit == 5
 
 
+def test_parser_accepts_inspect_safety_command() -> None:
+    args = build_parser().parse_args(["inspect-safety", "--limit", "5"])
+
+    assert args.command == "inspect-safety"
+    assert args.limit == 5
+
+
+def test_parser_accepts_inspect_overlay_command() -> None:
+    args = build_parser().parse_args(["inspect-overlay", "--limit", "5"])
+
+    assert args.command == "inspect-overlay"
+    assert args.limit == 5
+
+
 def test_parser_accepts_demo_overlay_command() -> None:
     args = build_parser().parse_args(
         ["demo-overlay", "--text", "OBS表示テスト", "--seconds", "8.5", "--keep-visible"]
