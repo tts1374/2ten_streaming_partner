@@ -9,6 +9,7 @@ def test_parser_defaults_to_placeholder_route() -> None:
     assert args.use_ollama is False
     assert args.fast_output_safety is False
     assert args.use_aivis is False
+    assert args.serve_overlay is False
 
 
 def test_parser_accepts_use_ollama_switch() -> None:
@@ -29,11 +30,27 @@ def test_parser_accepts_use_aivis_switch() -> None:
     assert args.use_aivis is True
 
 
+def test_parser_accepts_serve_overlay_switch() -> None:
+    args = build_parser().parse_args(["--serve-overlay"])
+
+    assert args.serve_overlay is True
+
+
 def test_parser_accepts_inspect_latency_command() -> None:
     args = build_parser().parse_args(["inspect-latency", "--limit", "5"])
 
     assert args.command == "inspect-latency"
     assert args.limit == 5
+
+
+def test_parser_accepts_demo_overlay_command() -> None:
+    args = build_parser().parse_args(
+        ["demo-overlay", "--text", "OBS表示テスト", "--seconds", "8.5"]
+    )
+
+    assert args.command == "demo-overlay"
+    assert args.text == "OBS表示テスト"
+    assert args.seconds == 8.5
 
 
 def test_build_llm_router_returns_none_without_ollama_switch() -> None:

@@ -132,6 +132,22 @@ uv run aituber-partner --use-ollama --fast-output-safety
 uv run aituber-partner --use-ollama --fast-output-safety --use-aivis
 ```
 
+OBSブラウザソース用の字幕オーバーレイも同じバックエンドプロセスで配信できる。`--serve-overlay`を付けると、`config.overlay.host`と`config.overlay.port`で`overlay/index.html`を静的配信し、`/events`からServer-Sent Eventsで`OverlayState`を送る。
+
+```powershell
+uv run aituber-partner --use-ollama --fast-output-safety --use-aivis --serve-overlay
+```
+
+OBSのブラウザソースには、起動時に表示されるURL、既定では`http://127.0.0.1:8787/`を指定する。Ph1のオーバーレイは字幕firstの薄いUIで、発話中テキスト、簡易状態、短い話者名だけを扱う。Live2D、3D、口パク、表情制御、高度なOBS制御は含めない。
+
+OBSで表示位置や文字サイズを調整する場合は、LLM/TTSを通さないデモ字幕を表示できる。
+
+```powershell
+uv run aituber-partner demo-overlay --text "OBS表示テスト中です！" --seconds 10
+```
+
+指定秒数後に字幕は消えるが、オーバーレイサーバはOBS調整のため起動したままにする。終了するときはCtrl+Cで止める。
+
 直近のLLM呼び出し遅延はSQLiteから簡易確認できる。`model`、`purpose`、`latency_ms`、`think`、成功可否を一覧し、通常経路と低遅延経路の内訳確認に使う。
 
 ```powershell
@@ -247,8 +263,9 @@ OBS字幕オーバーレイは、現在状態を表示するだけの薄いUIに
 - 現在発話中のテキスト。
 - 状態: `idle | thinking | speaking | listening | error`。
 - 任意で短い話者名。
+- 発話終了後またはTTS失敗後は、既定で2.5秒だけ字幕を残してから`idle`へ戻す。
 
-バックエンドからWebSocketまたはSSEで状態を送る。Ph1初期はSSEのほうが実装が軽い。
+バックエンドからWebSocketまたはSSEで状態を送る。Ph1初期は標準ライブラリのHTTPサーバとSSEで実装し、追加のNodeプロセスやSPA構成は導入しない。
 
 ## 6. データモデル
 
@@ -350,6 +367,7 @@ timeout_seconds = 30.0
 [overlay]
 host = "127.0.0.1"
 port = 8787
+clear_after_speech_seconds = 2.5
 
 [storage]
 sqlite_path = "data/app.db"

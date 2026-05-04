@@ -1,3 +1,5 @@
+import asyncio
+
 import pytest
 
 from aituber_partner.config import AppConfig
@@ -25,6 +27,22 @@ class ProcessedEventRecorder:
 
     def record_processed_event(self, processed) -> None:
         self.records.append(processed)
+
+
+class OverlayPublisher:
+    def __init__(self) -> None:
+        self.states = []
+
+    def publish(self, state) -> None:
+        self.states.append(state)
+
+
+class SleepRecorder:
+    def __init__(self) -> None:
+        self.delays: list[float] = []
+
+    async def sleep(self, delay: float) -> None:
+        self.delays.append(delay)
 
 
 class FakeSpeechSynthesizer:
@@ -244,6 +262,48 @@ async def test_orchestrator_records_processed_event_when_recorder_is_injected() 
 
     assert recorder.records == results
     assert recorder.records[0].input_event.text == "ナイス精度！"
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_publishes_overlay_state_changes() -> None:
+    source = FakeInputSource.from_texts(["ナイス精度！"])
+    publisher = OverlayPublisher()
+    orchestrator = LocalClosedLoopOrchestrator(
+        config=AppConfig(),
+        input_source=source,
+        overlay_publisher=publisher,
+    )
+
+    results = [result async for result in orchestrator.run_once_per_event()]
+
+    assert [state.status for state in publisher.states] == ["idle", "thinking", "speaking"]
+    assert publisher.states[-1].text == results[0].reply.text
+
+
+@pytest.mark.asyncio
+async def test_orchestrator_clears_overlay_after_configured_speech_delay() -> None:
+    source = FakeInputSource.from_texts(["ナイス精度！"])
+    publisher = OverlayPublisher()
+    sleeper = SleepRecorder()
+    orchestrator = LocalClosedLoopOrchestrator(
+        config=AppConfig(),
+        input_source=source,
+        overlay_publisher=publisher,
+        sleep=sleeper.sleep,
+    )
+
+    results = [result async for result in orchestrator.run_once_per_event()]
+    await asyncio.sleep(0)
+
+    assert results[0].overlay.status == "speaking"
+    assert sleeper.delays == [2.5]
+    assert [state.status for state in publisher.states] == [
+        "idle",
+        "thinking",
+        "speaking",
+        "idle",
+    ]
+    assert publisher.states[-1].text == ""
 
 
 @pytest.mark.asyncio

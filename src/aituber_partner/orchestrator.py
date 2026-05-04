@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from collections.abc import AsyncIterator
+import asyncio
+from collections.abc import AsyncIterator, Awaitable, Callable
 from typing import Protocol
 
 from aituber_partner.config import AppConfig
@@ -32,6 +33,11 @@ class ProcessedEventRecorder(Protocol):
         """Persist a completed event processing result."""
 
 
+class OverlayStatePublisher(Protocol):
+    def publish(self, state: OverlayState) -> None:
+        """Publish the latest overlay state to an external view."""
+
+
 class SpeechSynthesizer(Protocol):
     async def synthesize(self, reply: GeneratedReply) -> SpeechJob:
         """Create speech audio for a generated reply."""
@@ -53,6 +59,8 @@ class LocalClosedLoopOrchestrator:
         speech_synthesizer: SpeechSynthesizer | None = None,
         audio_player: AudioPlayer | None = None,
         recorder: ProcessedEventRecorder | None = None,
+        overlay_publisher: OverlayStatePublisher | None = None,
+        sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
         use_local_output_guard: bool = False,
     ) -> None:
         self._config = config
@@ -61,16 +69,20 @@ class LocalClosedLoopOrchestrator:
         self._speech_synthesizer = speech_synthesizer
         self._audio_player = audio_player
         self._recorder = recorder
+        self._overlay_publisher = overlay_publisher
+        self._sleep = sleep
+        self._clear_overlay_task: asyncio.Task[None] | None = None
         self._use_local_output_guard = use_local_output_guard
         self.overlay_state = OverlayState()
+        self._publish_overlay_state()
 
     async def run_once_per_event(self) -> AsyncIterator[ProcessedEvent]:
         async for event in self._input_source.events():
-            self.overlay_state = OverlayState(status="thinking", text="")
+            self._set_overlay_state(OverlayState(status="thinking", text=""))
             safety = await self._classify_safety(event)
 
             if safety.status in {"ignore", "block"}:
-                self.overlay_state = OverlayState(status="idle", text="")
+                self._set_overlay_state(OverlayState(status="idle", text=""))
                 processed = ProcessedEvent(
                     input_event=event,
                     safety=safety,
@@ -84,7 +96,7 @@ class LocalClosedLoopOrchestrator:
             reply = await self._generate_reply(event, safety)
             output_safety = await self._classify_output_safety(reply.text)
             if output_safety.status in {"ignore", "block"}:
-                self.overlay_state = OverlayState(status="idle", text="")
+                self._set_overlay_state(OverlayState(status="idle", text=""))
                 processed = ProcessedEvent(
                     input_event=event,
                     safety=safety,
@@ -103,7 +115,7 @@ class LocalClosedLoopOrchestrator:
                     latency_ms=reply.latency_ms,
                 )
 
-            self.overlay_state = OverlayState(status="speaking", text=reply.text)
+            self._set_overlay_state(OverlayState(status="speaking", text=reply.text))
             speech_job = await self._synthesize_speech(reply)
             processed = ProcessedEvent(
                 input_event=event,
@@ -115,6 +127,7 @@ class LocalClosedLoopOrchestrator:
             )
             self._record_processed_event(processed)
             yield processed
+            self._schedule_overlay_clear_after_speech()
 
     async def _classify_safety(self, event: InputEvent) -> SafetyDecision:
         if self._llm_router is None:
@@ -190,6 +203,34 @@ class LocalClosedLoopOrchestrator:
         if self._recorder is not None:
             self._recorder.record_processed_event(processed)
 
+    def _set_overlay_state(self, state: OverlayState) -> None:
+        self._cancel_scheduled_overlay_clear()
+        self.overlay_state = state
+        self._publish_overlay_state()
+
+    def _publish_overlay_state(self) -> None:
+        if self._overlay_publisher is not None:
+            self._overlay_publisher.publish(self.overlay_state)
+
+    def _schedule_overlay_clear_after_speech(self) -> None:
+        if self._overlay_publisher is None:
+            return
+        self._cancel_scheduled_overlay_clear()
+        self._clear_overlay_task = asyncio.create_task(self._clear_overlay_after_speech())
+
+    def _cancel_scheduled_overlay_clear(self) -> None:
+        if self._clear_overlay_task is not None and not self._clear_overlay_task.done():
+            self._clear_overlay_task.cancel()
+        self._clear_overlay_task = None
+
+    async def _clear_overlay_after_speech(self) -> None:
+        delay = self._config.overlay.clear_after_speech_seconds
+        if delay > 0:
+            await self._sleep(delay)
+        if self.overlay_state.status == "speaking":
+            self._clear_overlay_task = None
+            self._set_overlay_state(OverlayState(status="idle", text=""))
+
     async def _synthesize_speech(self, reply: GeneratedReply) -> SpeechJob | None:
         if self._speech_synthesizer is None:
             return None
@@ -204,8 +245,10 @@ class LocalClosedLoopOrchestrator:
                 error=str(exc),
             )
         if speech_job.status == "failed":
-            self.overlay_state = self.overlay_state.model_copy(
-                update={"detail": f"TTS failed: {speech_job.error or 'unknown error'}"}
+            self._set_overlay_state(
+                self.overlay_state.model_copy(
+                    update={"detail": f"TTS failed: {speech_job.error or 'unknown error'}"}
+                )
             )
             return speech_job
         if self._audio_player is None or speech_job.audio_path is None:
@@ -215,8 +258,8 @@ class LocalClosedLoopOrchestrator:
             await self._audio_player.play(speech_job.audio_path)
         except Exception as exc:
             speech_job = speech_job.model_copy(update={"status": "failed", "error": str(exc)})
-            self.overlay_state = self.overlay_state.model_copy(
-                update={"detail": f"Audio playback failed: {exc}"}
+            self._set_overlay_state(
+                self.overlay_state.model_copy(update={"detail": f"Audio playback failed: {exc}"})
             )
             return speech_job
 
