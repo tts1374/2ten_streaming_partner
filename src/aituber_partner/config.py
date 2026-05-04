@@ -22,7 +22,8 @@ class ModelConfig(BaseModel):
 
 class AivisConfig(BaseModel):
     base_url: str = "http://127.0.0.1:10101"
-    voice_id: str = "default"
+    voice_id: int = 888753760
+    timeout_seconds: float = Field(default=30.0, gt=0)
 
 
 class OverlayConfig(BaseModel):
@@ -61,4 +62,3 @@ def load_config(path: Path | None = None) -> AppConfig:
     with path.open("rb") as config_file:
         data = tomllib.load(config_file)
     return AppConfig.model_validate(data)
-

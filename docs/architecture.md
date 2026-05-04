@@ -126,6 +126,18 @@ uv run aituber-partner --use-ollama
 uv run aituber-partner --use-ollama --fast-output-safety
 ```
 
+ローカルのAivisSpeechへ音声生成とWAV再生も投げる場合は以下を使う。AivisSpeechは`/audio_query`でクエリを作り、`/synthesis`でWAVを生成する。生成、再生、失敗は`speech_jobs`に保存し、TTSや再生に失敗しても字幕状態は維持する。
+
+```powershell
+uv run aituber-partner --use-ollama --fast-output-safety --use-aivis
+```
+
+直近のLLM呼び出し遅延はSQLiteから簡易確認できる。`model`、`purpose`、`latency_ms`、`think`、成功可否を一覧し、通常経路と低遅延経路の内訳確認に使う。
+
+```powershell
+uv run aituber-partner inspect-latency --limit 20
+```
+
 ### 4.2 Overlay Process
 
 役割:
@@ -224,7 +236,7 @@ AivisSpeechを既定TTSにする。
 
 - 回答テキストをAivisSpeech APIへ送る。
 - 生成音声ファイルのパス、voice_id、生成時間、再生状態を`SpeechJob`として保存する。
-- TTS失敗時は、字幕だけ更新し、音声失敗を状態表示とログに残す。
+- TTSまたはWAV再生の失敗時は、字幕だけ更新し、音声失敗を状態表示とログに残す。
 
 ### 5.8 Overlay
 
@@ -313,7 +325,7 @@ class ProcessedEvent(BaseModel):
 
 `llm_calls`には、モデル名、用途、入力要約、出力要約、latency_ms、think指定、成功/失敗、エラー内容を保存する。これにより、`qwen3.5:9b`が通常コメント経路で呼ばれていないことや、Qwen系で`think: false`が指定されていることを検証できる。
 
-初期実装では`SQLiteStore`が`input_events`、`safety_decisions`、`generated_replies`、`overlay_events`、`llm_calls`を作成する。LLM呼び出しは`RecordingLLMClient`でラップした場合に成功・失敗を保存する。
+初期実装では`SQLiteStore`が`input_events`、`safety_decisions`、`generated_replies`、`speech_jobs`、`overlay_events`、`llm_calls`を作成する。LLM呼び出しは`RecordingLLMClient`でラップした場合に成功・失敗を保存する。TTSとWAV再生は`--use-aivis`指定時だけ実行し、AivisSpeech未起動や再生失敗も`speech_jobs.status = failed`として残す。
 
 ## 8. 設定ファイル
 
@@ -332,7 +344,8 @@ review = "pakachan/elyza-llama3-8b"
 
 [aivis]
 base_url = "http://127.0.0.1:10101"
-voice_id = "default"
+voice_id = 888753760
+timeout_seconds = 30.0
 
 [overlay]
 host = "127.0.0.1"

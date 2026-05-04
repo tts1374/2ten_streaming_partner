@@ -23,12 +23,23 @@ from aituber_partner.models import (
     OverlayState,
     ProcessedEvent,
     SafetyDecision,
+    SpeechJob,
 )
 
 
 class ProcessedEventRecorder(Protocol):
     def record_processed_event(self, processed: ProcessedEvent) -> None:
         """Persist a completed event processing result."""
+
+
+class SpeechSynthesizer(Protocol):
+    async def synthesize(self, reply: GeneratedReply) -> SpeechJob:
+        """Create speech audio for a generated reply."""
+
+
+class AudioPlayer(Protocol):
+    async def play(self, audio_path: str) -> None:
+        """Play a generated audio file."""
 
 
 class LocalClosedLoopOrchestrator:
@@ -39,12 +50,16 @@ class LocalClosedLoopOrchestrator:
         config: AppConfig,
         input_source: InputSource,
         llm_router: LLMRouter | None = None,
+        speech_synthesizer: SpeechSynthesizer | None = None,
+        audio_player: AudioPlayer | None = None,
         recorder: ProcessedEventRecorder | None = None,
         use_local_output_guard: bool = False,
     ) -> None:
         self._config = config
         self._input_source = input_source
         self._llm_router = llm_router
+        self._speech_synthesizer = speech_synthesizer
+        self._audio_player = audio_player
         self._recorder = recorder
         self._use_local_output_guard = use_local_output_guard
         self.overlay_state = OverlayState()
@@ -89,11 +104,13 @@ class LocalClosedLoopOrchestrator:
                 )
 
             self.overlay_state = OverlayState(status="speaking", text=reply.text)
+            speech_job = await self._synthesize_speech(reply)
             processed = ProcessedEvent(
                 input_event=event,
                 safety=safety,
                 output_safety=output_safety,
                 reply=reply,
+                speech_job=speech_job,
                 overlay=self.overlay_state,
             )
             self._record_processed_event(processed)
@@ -172,3 +189,35 @@ class LocalClosedLoopOrchestrator:
     def _record_processed_event(self, processed: ProcessedEvent) -> None:
         if self._recorder is not None:
             self._recorder.record_processed_event(processed)
+
+    async def _synthesize_speech(self, reply: GeneratedReply) -> SpeechJob | None:
+        if self._speech_synthesizer is None:
+            return None
+        try:
+            speech_job = await self._speech_synthesizer.synthesize(reply)
+        except Exception as exc:
+            speech_job = SpeechJob(
+                reply_id=reply.id,
+                text=reply.text,
+                voice_id=self._config.aivis.voice_id,
+                status="failed",
+                error=str(exc),
+            )
+        if speech_job.status == "failed":
+            self.overlay_state = self.overlay_state.model_copy(
+                update={"detail": f"TTS failed: {speech_job.error or 'unknown error'}"}
+            )
+            return speech_job
+        if self._audio_player is None or speech_job.audio_path is None:
+            return speech_job
+
+        try:
+            await self._audio_player.play(speech_job.audio_path)
+        except Exception as exc:
+            speech_job = speech_job.model_copy(update={"status": "failed", "error": str(exc)})
+            self.overlay_state = self.overlay_state.model_copy(
+                update={"detail": f"Audio playback failed: {exc}"}
+            )
+            return speech_job
+
+        return speech_job.model_copy(update={"status": "played"})

@@ -8,6 +8,7 @@ from aituber_partner.models import (
     OverlayState,
     ProcessedEvent,
     SafetyDecision,
+    SpeechJob,
 )
 from aituber_partner.storage.sqlite_store import SQLiteStore
 
@@ -34,6 +35,14 @@ def test_record_processed_event_persists_runtime_tables(tmp_path) -> None:
         safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
         output_safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.95),
         reply=reply,
+        speech_job=SpeechJob(
+            reply_id=reply.id,
+            text=reply.text,
+            voice_id=888753760,
+            status="created",
+            audio_path="data/audio/reply.wav",
+            latency_ms=321,
+        ),
         overlay=OverlayState(status="speaking", text=reply.text),
     )
 
@@ -56,6 +65,13 @@ def test_record_processed_event_persists_runtime_tables(tmp_path) -> None:
     overlay_row = fetch_one(db_path, "SELECT * FROM overlay_events")
     assert overlay_row["status"] == "speaking"
     assert overlay_row["text"] == "いい流れ！"
+
+    speech_row = fetch_one(db_path, "SELECT * FROM speech_jobs")
+    assert speech_row["reply_id"] == reply.id
+    assert speech_row["voice_id"] == 888753760
+    assert speech_row["status"] == "created"
+    assert speech_row["audio_path"] == "data/audio/reply.wav"
+    assert speech_row["latency_ms"] == 321
 
 
 def test_record_llm_call_persists_model_purpose_think_and_latency(tmp_path) -> None:

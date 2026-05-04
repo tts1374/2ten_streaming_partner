@@ -12,6 +12,8 @@ def test_default_config_uses_phase1_model_roles() -> None:
     assert config.models.reply == "qwen3:8b"
     assert config.models.vision == "qwen3.5:9b"
     assert config.models.review == "pakachan/elyza-llama3-8b"
+    assert config.aivis.base_url == "http://127.0.0.1:10101"
+    assert isinstance(config.aivis.voice_id, int)
 
 
 def test_load_config_overrides_toml_values(tmp_path: Path) -> None:
@@ -37,4 +39,3 @@ idle_timeout_seconds = 12.5
 def test_load_config_requires_existing_file(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         load_config(tmp_path / "missing.toml")
-

@@ -20,6 +20,7 @@ def utc_now() -> datetime:
 InputSourceName = Literal["youtube_chat", "voice", "idle_topic"]
 SafetyStatus = Literal["allow", "ignore", "deflect", "block"]
 OverlayStatus = Literal["idle", "listening", "thinking", "speaking", "error"]
+SpeechJobStatus = Literal["created", "played", "failed"]
 
 
 class InputEvent(BaseModel):
@@ -55,9 +56,22 @@ class OverlayState(BaseModel):
     detail: str | None = None
 
 
+class SpeechJob(BaseModel):
+    id: str = Field(default_factory=lambda: new_id("speech"))
+    reply_id: str
+    text: str
+    voice_id: int
+    status: SpeechJobStatus
+    audio_path: str | None = None
+    error: str | None = None
+    latency_ms: int = Field(default=0, ge=0)
+    created_at: datetime = Field(default_factory=utc_now)
+
+
 class ProcessedEvent(BaseModel):
     input_event: InputEvent
     safety: SafetyDecision
     output_safety: SafetyDecision | None = None
     reply: GeneratedReply | None
+    speech_job: SpeechJob | None = None
     overlay: OverlayState

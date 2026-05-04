@@ -8,6 +8,7 @@ def test_parser_defaults_to_placeholder_route() -> None:
 
     assert args.use_ollama is False
     assert args.fast_output_safety is False
+    assert args.use_aivis is False
 
 
 def test_parser_accepts_use_ollama_switch() -> None:
@@ -20,6 +21,12 @@ def test_parser_accepts_fast_output_safety_switch() -> None:
     args = build_parser().parse_args(["--fast-output-safety"])
 
     assert args.fast_output_safety is True
+
+
+def test_parser_accepts_use_aivis_switch() -> None:
+    args = build_parser().parse_args(["--use-aivis"])
+
+    assert args.use_aivis is True
 
 
 def test_parser_accepts_inspect_latency_command() -> None:

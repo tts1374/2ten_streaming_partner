@@ -4,7 +4,7 @@ from aituber_partner.config import AppConfig
 from aituber_partner.inputs.fake import FakeInputSource
 from aituber_partner.llm.client import LLMRequest, LLMResponse
 from aituber_partner.llm.router import LLMRouter
-from aituber_partner.models import InputEvent
+from aituber_partner.models import GeneratedReply, InputEvent, SpeechJob
 from aituber_partner.orchestrator import LocalClosedLoopOrchestrator
 
 
@@ -25,6 +25,36 @@ class ProcessedEventRecorder:
 
     def record_processed_event(self, processed) -> None:
         self.records.append(processed)
+
+
+class FakeSpeechSynthesizer:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.replies: list[GeneratedReply] = []
+
+    async def synthesize(self, reply: GeneratedReply) -> SpeechJob:
+        self.replies.append(reply)
+        if self.fail:
+            raise ConnectionError("AivisSpeech is not running")
+        return SpeechJob(
+            reply_id=reply.id,
+            text=reply.text,
+            voice_id=888753760,
+            status="created",
+            audio_path="data/audio/test.wav",
+            latency_ms=42,
+        )
+
+
+class FakeAudioPlayer:
+    def __init__(self, *, fail: bool = False) -> None:
+        self.fail = fail
+        self.paths: list[str] = []
+
+    async def play(self, audio_path: str) -> None:
+        self.paths.append(audio_path)
+        if self.fail:
+            raise RuntimeError("audio device unavailable")
 
 
 def build_orchestrator_with_llm(
@@ -214,3 +244,85 @@ async def test_orchestrator_records_processed_event_when_recorder_is_injected() 
 
     assert recorder.records == results
     assert recorder.records[0].input_event.text == "ナイス精度！"
+
+
+@pytest.mark.asyncio
+async def test_speech_synthesizer_runs_after_safe_reply() -> None:
+    source = FakeInputSource.from_texts(["ナイス精度！"])
+    speech = FakeSpeechSynthesizer()
+    orchestrator = LocalClosedLoopOrchestrator(
+        config=AppConfig(),
+        input_source=source,
+        speech_synthesizer=speech,
+    )
+
+    results = [result async for result in orchestrator.run_once_per_event()]
+
+    assert len(speech.replies) == 1
+    assert results[0].speech_job is not None
+    assert results[0].speech_job.status == "created"
+    assert results[0].speech_job.audio_path == "data/audio/test.wav"
+    assert results[0].overlay.status == "speaking"
+    assert results[0].overlay.text == results[0].reply.text
+
+
+@pytest.mark.asyncio
+async def test_audio_player_runs_after_speech_generation() -> None:
+    source = FakeInputSource.from_texts(["ナイス精度！"])
+    speech = FakeSpeechSynthesizer()
+    player = FakeAudioPlayer()
+    orchestrator = LocalClosedLoopOrchestrator(
+        config=AppConfig(),
+        input_source=source,
+        speech_synthesizer=speech,
+        audio_player=player,
+    )
+
+    results = [result async for result in orchestrator.run_once_per_event()]
+
+    assert player.paths == ["data/audio/test.wav"]
+    assert results[0].speech_job is not None
+    assert results[0].speech_job.status == "played"
+    assert results[0].overlay.status == "speaking"
+
+
+@pytest.mark.asyncio
+async def test_audio_playback_failure_keeps_subtitle_overlay_state() -> None:
+    source = FakeInputSource.from_texts(["ナイス精度！"])
+    speech = FakeSpeechSynthesizer()
+    player = FakeAudioPlayer(fail=True)
+    orchestrator = LocalClosedLoopOrchestrator(
+        config=AppConfig(),
+        input_source=source,
+        speech_synthesizer=speech,
+        audio_player=player,
+    )
+
+    results = [result async for result in orchestrator.run_once_per_event()]
+
+    assert results[0].speech_job is not None
+    assert results[0].speech_job.status == "failed"
+    assert "audio device unavailable" in (results[0].speech_job.error or "")
+    assert results[0].overlay.status == "speaking"
+    assert results[0].overlay.text == results[0].reply.text
+    assert "Audio playback failed" in (results[0].overlay.detail or "")
+
+
+@pytest.mark.asyncio
+async def test_tts_failure_keeps_subtitle_overlay_state() -> None:
+    source = FakeInputSource.from_texts(["ナイス精度！"])
+    speech = FakeSpeechSynthesizer(fail=True)
+    orchestrator = LocalClosedLoopOrchestrator(
+        config=AppConfig(),
+        input_source=source,
+        speech_synthesizer=speech,
+    )
+
+    results = [result async for result in orchestrator.run_once_per_event()]
+
+    assert results[0].speech_job is not None
+    assert results[0].speech_job.status == "failed"
+    assert "AivisSpeech is not running" in (results[0].speech_job.error or "")
+    assert results[0].overlay.status == "speaking"
+    assert results[0].overlay.text == results[0].reply.text
+    assert "TTS failed" in (results[0].overlay.detail or "")

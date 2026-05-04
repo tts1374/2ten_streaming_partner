@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any
 
 from aituber_partner.llm.client import LLMRequest, LLMResponse
-from aituber_partner.models import ProcessedEvent, SafetyDecision, utc_now
+from aituber_partner.models import ProcessedEvent, SafetyDecision, SpeechJob, utc_now
 
 
 class SQLiteStore:
@@ -66,6 +66,19 @@ class SQLiteStore:
                     text TEXT NOT NULL,
                     detail TEXT,
                     updated_at TEXT NOT NULL
+                );
+
+                CREATE TABLE IF NOT EXISTS speech_jobs (
+                    id TEXT PRIMARY KEY,
+                    reply_id TEXT NOT NULL,
+                    input_event_id TEXT NOT NULL,
+                    text TEXT NOT NULL,
+                    voice_id INTEGER NOT NULL,
+                    status TEXT NOT NULL,
+                    audio_path TEXT,
+                    error TEXT,
+                    latency_ms INTEGER NOT NULL,
+                    created_at TEXT NOT NULL
                 );
 
                 CREATE TABLE IF NOT EXISTS llm_calls (
@@ -142,6 +155,12 @@ class SQLiteStore:
                         now,
                     ),
                 )
+            if processed.speech_job is not None:
+                self._insert_speech_job(
+                    connection,
+                    input_event_id=event.id,
+                    speech_job=processed.speech_job,
+                )
             overlay = processed.overlay
             connection.execute(
                 """
@@ -205,6 +224,34 @@ class SQLiteStore:
                 (limit,),
             ).fetchall()
         return [dict(row) for row in rows]
+
+    def _insert_speech_job(
+        self,
+        connection: sqlite3.Connection,
+        *,
+        input_event_id: str,
+        speech_job: SpeechJob,
+    ) -> None:
+        connection.execute(
+            """
+            INSERT OR REPLACE INTO speech_jobs (
+                id, reply_id, input_event_id, text, voice_id, status, audio_path,
+                error, latency_ms, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                speech_job.id,
+                speech_job.reply_id,
+                input_event_id,
+                speech_job.text,
+                speech_job.voice_id,
+                speech_job.status,
+                speech_job.audio_path,
+                speech_job.error,
+                speech_job.latency_ms,
+                _to_json_timestamp(speech_job.created_at),
+            ),
+        )
 
     def _insert_safety_decision(
         self,

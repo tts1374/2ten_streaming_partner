@@ -1,6 +1,6 @@
 from pydantic import ValidationError
 
-from aituber_partner.models import InputEvent, OverlayState, SafetyDecision
+from aituber_partner.models import InputEvent, OverlayState, SafetyDecision, SpeechJob
 
 
 def test_input_event_defaults_are_populated() -> None:
@@ -26,3 +26,29 @@ def test_overlay_state_defaults_to_idle() -> None:
     assert state.status == "idle"
     assert state.text == ""
 
+
+def test_speech_job_tracks_created_audio() -> None:
+    job = SpeechJob(
+        reply_id="reply_1",
+        text="いい流れ！",
+        voice_id=888753760,
+        status="created",
+        audio_path="data/audio/reply.wav",
+        latency_ms=123,
+    )
+
+    assert job.id.startswith("speech_")
+    assert job.status == "created"
+    assert job.audio_path == "data/audio/reply.wav"
+
+
+def test_speech_job_tracks_played_audio() -> None:
+    job = SpeechJob(
+        reply_id="reply_1",
+        text="いい流れ！",
+        voice_id=888753760,
+        status="played",
+        audio_path="data/audio/reply.wav",
+    )
+
+    assert job.status == "played"

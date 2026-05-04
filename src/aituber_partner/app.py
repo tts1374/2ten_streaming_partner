@@ -11,6 +11,8 @@ from aituber_partner.inputs.fake import FakeInputSource
 from aituber_partner.llm.client import LLMCallRecorder, OllamaClient, RecordingLLMClient
 from aituber_partner.llm.router import LLMRouter
 from aituber_partner.orchestrator import LocalClosedLoopOrchestrator
+from aituber_partner.speech.aivis import AivisSpeechClient
+from aituber_partner.speech.player import WaveAudioPlayer
 from aituber_partner.storage.sqlite_store import SQLiteStore
 
 
@@ -31,6 +33,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--fast-output-safety",
         action="store_true",
         help="Use a local final output guard instead of an extra LLM safety call.",
+    )
+    parser.add_argument(
+        "--use-aivis",
+        action="store_true",
+        help="Generate reply audio with local AivisSpeech and store speech job results.",
     )
     subparsers = parser.add_subparsers(dest="command")
     inspect_parser = subparsers.add_parser(
@@ -66,6 +73,7 @@ async def run(
     *,
     use_ollama: bool = False,
     fast_output_safety: bool = False,
+    use_aivis: bool = False,
 ) -> None:
     store = SQLiteStore(config.storage.sqlite_path)
     store.initialize()
@@ -79,6 +87,8 @@ async def run(
         config=config,
         input_source=source,
         llm_router=build_llm_router(config, use_ollama=use_ollama, recorder=store),
+        speech_synthesizer=AivisSpeechClient(config.aivis, config.storage) if use_aivis else None,
+        audio_player=WaveAudioPlayer() if use_aivis else None,
         recorder=store,
         use_local_output_guard=fast_output_safety,
     )
@@ -131,6 +141,7 @@ def main() -> None:
             config,
             use_ollama=args.use_ollama,
             fast_output_safety=args.fast_output_safety,
+            use_aivis=args.use_aivis,
         )
     )
 
