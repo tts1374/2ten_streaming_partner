@@ -52,6 +52,9 @@ class IdleTopicInputSource:
                 if item is _END:
                     return
 
+                if isinstance(item, BaseException):
+                    raise item
+
                 idle_count = 0
                 yield item
         finally:
@@ -62,6 +65,8 @@ class IdleTopicInputSource:
         try:
             async for event in self._source.events():
                 await queue.put(event)
+        except Exception as exc:
+            await queue.put(exc)
         finally:
             await queue.put(_END)
 

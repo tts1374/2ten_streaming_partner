@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import os
 from pathlib import Path
 
 from aituber_partner.config import AppConfig, load_config
+from aituber_partner.inputs.base import InputSource
 from aituber_partner.inputs.fake import FakeInputSource
 from aituber_partner.inputs.idle_topic import IdleTopicInputSource
+from aituber_partner.inputs.youtube_chat import YouTubeChatInputSource
 from aituber_partner.llm.client import LLMCallRecorder, OllamaClient, RecordingLLMClient
 from aituber_partner.llm.router import LLMRouter
 from aituber_partner.orchestrator import LocalClosedLoopOrchestrator
@@ -46,6 +49,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--serve-overlay",
         action="store_true",
         help="Serve the OBS subtitle overlay and stream OverlayState over SSE.",
+    )
+    parser.add_argument(
+        "--use-youtube-chat",
+        action="store_true",
+        help="Read YouTube Live Chat from youtube_chat.live_chat_id instead of fake comments.",
     )
     subparsers = parser.add_subparsers(dest="command")
     inspect_parser = subparsers.add_parser(
@@ -96,6 +104,25 @@ def build_llm_router(
     return LLMRouter(config=config, client=client)
 
 
+def build_input_source(config: AppConfig, *, use_youtube_chat: bool) -> InputSource:
+    if use_youtube_chat:
+        api_key = os.environ.get(config.youtube_chat.api_key_env, "")
+        source: InputSource = YouTubeChatInputSource(config.youtube_chat, api_key=api_key)
+    else:
+        source = FakeInputSource.from_texts(
+            [
+                "今日の判定、かなり光ってますね！",
+                "この曲のサビ、リズム取りやすいですか？",
+            ]
+        )
+
+    return IdleTopicInputSource(
+        source,
+        timeout_seconds=config.runtime.idle_timeout_seconds,
+        topics=config.runtime.idle_topics,
+    )
+
+
 async def run(
     config: AppConfig,
     *,
@@ -103,20 +130,11 @@ async def run(
     fast_output_safety: bool = False,
     use_aivis: bool = False,
     serve_overlay: bool = False,
+    use_youtube_chat: bool = False,
 ) -> None:
     store = SQLiteStore(config.storage.sqlite_path)
     store.initialize()
-    source = FakeInputSource.from_texts(
-        [
-            "今日の判定、かなり光ってますね！",
-            "この曲のサビ、リズム取りやすいですか？",
-        ]
-    )
-    source = IdleTopicInputSource(
-        source,
-        timeout_seconds=config.runtime.idle_timeout_seconds,
-        topics=config.runtime.idle_topics,
-    )
+    source = build_input_source(config, use_youtube_chat=use_youtube_chat)
     broadcaster = OverlayStateBroadcaster()
     runner = OverlayServerRunner(config.overlay, broadcaster) if serve_overlay else None
     if runner is not None:
@@ -244,6 +262,7 @@ def main() -> None:
             fast_output_safety=args.fast_output_safety,
             use_aivis=args.use_aivis,
             serve_overlay=args.serve_overlay,
+            use_youtube_chat=args.use_youtube_chat,
         )
     )
 

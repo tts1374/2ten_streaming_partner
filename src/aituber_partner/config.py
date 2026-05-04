@@ -34,6 +34,16 @@ class OverlayConfig(BaseModel):
     clear_after_speech_seconds: float = Field(default=2.5, ge=0)
 
 
+class YouTubeChatConfig(BaseModel):
+    live_chat_id: str | None = None
+    api_key_env: str = Field(default="YOUTUBE_API_KEY", min_length=1)
+    poll_interval_seconds: float = Field(default=5.0, gt=0)
+    min_poll_interval_seconds: float = Field(default=1.0, gt=0)
+    request_timeout_seconds: float = Field(default=10.0, gt=0)
+    max_results: int = Field(default=200, ge=200, le=2000)
+    skip_initial_history: bool = True
+
+
 class StorageConfig(BaseModel):
     sqlite_path: Path = Path("data/app.db")
     lancedb_path: Path = Path("data/lancedb")
@@ -57,6 +67,7 @@ class AppConfig(BaseModel):
     models: ModelConfig = Field(default_factory=ModelConfig)
     aivis: AivisConfig = Field(default_factory=AivisConfig)
     overlay: OverlayConfig = Field(default_factory=OverlayConfig)
+    youtube_chat: YouTubeChatConfig = Field(default_factory=YouTubeChatConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
 

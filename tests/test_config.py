@@ -17,6 +17,9 @@ def test_default_config_uses_phase1_model_roles() -> None:
     assert config.overlay.speaker_name == "2ten"
     assert config.overlay.show_detail is False
     assert config.overlay.clear_after_speech_seconds == 2.5
+    assert config.youtube_chat.live_chat_id is None
+    assert config.youtube_chat.api_key_env == "YOUTUBE_API_KEY"
+    assert config.youtube_chat.skip_initial_history is True
     assert config.runtime.idle_timeout_seconds == 30.0
     assert config.runtime.idle_topics
 
@@ -30,6 +33,15 @@ port = 9999
 speaker_name = "てん"
 show_detail = true
 clear_after_speech_seconds = 1.25
+
+[youtube_chat]
+live_chat_id = "live-chat-1"
+api_key_env = "YT_TEST_KEY"
+poll_interval_seconds = 3.0
+min_poll_interval_seconds = 2.0
+request_timeout_seconds = 4.0
+max_results = 200
+skip_initial_history = false
 
 [runtime]
 idle_timeout_seconds = 12.5
@@ -45,6 +57,13 @@ idle_topics = ["判定が光った話", "次の曲の見どころ"]
     assert config.overlay.speaker_name == "てん"
     assert config.overlay.show_detail is True
     assert config.overlay.clear_after_speech_seconds == 1.25
+    assert config.youtube_chat.live_chat_id == "live-chat-1"
+    assert config.youtube_chat.api_key_env == "YT_TEST_KEY"
+    assert config.youtube_chat.poll_interval_seconds == 3.0
+    assert config.youtube_chat.min_poll_interval_seconds == 2.0
+    assert config.youtube_chat.request_timeout_seconds == 4.0
+    assert config.youtube_chat.max_results == 200
+    assert config.youtube_chat.skip_initial_history is False
     assert config.runtime.idle_timeout_seconds == 12.5
     assert config.runtime.idle_topics == ["判定が光った話", "次の曲の見どころ"]
 

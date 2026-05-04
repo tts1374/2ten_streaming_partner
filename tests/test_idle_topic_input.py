@@ -4,6 +4,12 @@ from aituber_partner.inputs.fake import FakeInputSource
 from aituber_partner.inputs.idle_topic import IdleTopicInputSource
 
 
+class FailingInputSource:
+    async def events(self):
+        raise RuntimeError("upstream failed")
+        yield
+
+
 @pytest.mark.asyncio
 async def test_idle_topic_source_emits_topic_after_inactivity() -> None:
     source = IdleTopicInputSource(
@@ -46,3 +52,15 @@ def test_idle_topic_source_requires_topics() -> None:
             timeout_seconds=0.01,
             topics=[],
         )
+
+
+@pytest.mark.asyncio
+async def test_idle_topic_source_propagates_upstream_errors() -> None:
+    source = IdleTopicInputSource(
+        FailingInputSource(),
+        timeout_seconds=0.01,
+        topics=["静かな時の話題"],
+    )
+
+    with pytest.raises(RuntimeError, match="upstream failed"):
+        _ = [event async for event in source.events()]

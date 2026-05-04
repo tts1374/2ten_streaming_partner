@@ -1,0 +1,44 @@
+[ollama]
+base_url = "http://127.0.0.1:11434"
+keep_alive = "30m"
+
+[models]
+classifier = "qwen3.5:4b"
+reply = "qwen3:8b"
+vision = "qwen3.5:9b"
+review = "pakachan/elyza-llama3-8b"
+
+[aivis]
+base_url = "http://127.0.0.1:10101"
+voice_id = 888753760
+timeout_seconds = 30.0
+
+[overlay]
+host = "127.0.0.1"
+port = 8787
+speaker_name = "2ten"
+show_detail = false
+clear_after_speech_seconds = 2.5
+
+[youtube_chat]
+# Fill this with the active live chat ID before using --use-youtube-chat.
+live_chat_id = ""
+api_key_env = "YOUTUBE_API_KEY"
+poll_interval_seconds = 5.0
+min_poll_interval_seconds = 1.0
+request_timeout_seconds = 10.0
+max_results = 200
+skip_initial_history = true
+
+[storage]
+sqlite_path = "data/app.db"
+lancedb_path = "data/lancedb"
+audio_dir = "data/audio"
+
+[runtime]
+idle_timeout_seconds = 30.0
+idle_topics = [
+  "最近プレイした音ゲー曲で、判定が光った瞬間の話",
+  "今日の配信で次に注目したい譜面の見どころ",
+  "リズムに乗りやすい曲の好きなポイント",
+]
