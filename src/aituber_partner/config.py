@@ -42,6 +42,11 @@ class YouTubeChatConfig(BaseModel):
     min_poll_interval_seconds: float = Field(default=1.0, gt=0)
     request_timeout_seconds: float = Field(default=10.0, gt=0)
     max_results: int = Field(default=200, ge=200, le=2000)
+    max_selected_per_poll: int = Field(default=3, ge=1, le=20)
+    max_message_length: int = Field(default=160, ge=1, le=1000)
+    drop_symbol_heavy_messages: bool = True
+    symbol_heavy_threshold: float = Field(default=0.6, ge=0.0, le=1.0)
+    drop_duplicate_text_per_poll: bool = True
     skip_initial_history: bool = True
 
 

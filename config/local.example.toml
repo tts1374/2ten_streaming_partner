@@ -30,6 +30,11 @@ poll_interval_seconds = 5.0
 min_poll_interval_seconds = 1.0
 request_timeout_seconds = 10.0
 max_results = 200
+max_selected_per_poll = 3
+max_message_length = 160
+drop_symbol_heavy_messages = true
+symbol_heavy_threshold = 0.6
+drop_duplicate_text_per_poll = true
 skip_initial_history = true
 
 [storage]

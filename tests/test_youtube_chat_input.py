@@ -88,6 +88,74 @@ async def test_youtube_chat_source_skips_initial_history_and_deduplicates() -> N
 
 
 @pytest.mark.asyncio
+async def test_youtube_chat_source_selects_high_value_messages_per_poll() -> None:
+    payloads = [
+        {
+            "nextPageToken": "page-2",
+            "pollingIntervalMillis": 1000,
+            "items": [
+                _message("msg-1", "w"),
+                _message("msg-2", "音量大丈夫？"),
+                _message("msg-3", "こんにちは"),
+                _message("msg-4", "次なにやる？", "moderator"),
+            ],
+            "offlineAt": "2026-05-04T12:35:00Z",
+        }
+    ]
+    payloads[0]["items"][3]["authorDetails"]["isChatModerator"] = True
+
+    source = YouTubeChatInputSource(
+        YouTubeChatConfig(
+            live_chat_id="live-chat-1",
+            skip_initial_history=False,
+            max_selected_per_poll=2,
+        ),
+        api_key="api-key",
+        fetch_json=lambda _url, _timeout: payloads.pop(0),
+    )
+
+    events = [event async for event in source.events()]
+
+    assert [event.text for event in events] == ["次なにやる？", "音量大丈夫？"]
+    assert events[0].metadata["selection_rank"] == 1
+    assert events[0].metadata["selection_dropped_count"] == 2
+    assert events[1].metadata["selection_rank"] == 2
+
+
+@pytest.mark.asyncio
+async def test_youtube_chat_source_filters_spammy_messages_before_selection() -> None:
+    payloads = [
+        {
+            "nextPageToken": "page-2",
+            "pollingIntervalMillis": 1000,
+            "items": [
+                _message("msg-1", "これは長すぎるコメントです"),
+                _message("msg-2", "!!!!!!!!!!"),
+                _message("msg-3", "音量大丈夫？"),
+                _message("msg-4", " 音量 大丈夫？ "),
+                _message("msg-5", "見えてる？"),
+            ],
+            "offlineAt": "2026-05-04T12:35:00Z",
+        }
+    ]
+
+    source = YouTubeChatInputSource(
+        YouTubeChatConfig(
+            live_chat_id="live-chat-1",
+            skip_initial_history=False,
+            max_selected_per_poll=3,
+            max_message_length=10,
+        ),
+        api_key="api-key",
+        fetch_json=lambda _url, _timeout: payloads.pop(0),
+    )
+
+    events = [event async for event in source.events()]
+
+    assert [event.text for event in events] == ["音量大丈夫？", "見えてる？"]
+
+
+@pytest.mark.asyncio
 async def test_youtube_chat_source_resolves_live_chat_id_from_video_id() -> None:
     requested_urls = []
     payloads = [

@@ -69,9 +69,11 @@ class YouTubeChatInputSource:
             page_count += 1
             page_token = payload.get("nextPageToken") or page_token
             messages = list(self._iter_message_events(payload))
+            filtered_messages = self._filter_message_events(messages)
+            selected_messages = self._select_message_events(filtered_messages)
 
             if not (self._config.skip_initial_history and page_count == 1):
-                for event in messages:
+                for event in selected_messages:
                     yield event
 
             if payload.get("offlineAt"):
@@ -134,6 +136,69 @@ class YouTubeChatInputSource:
             event = self._build_event(item)
             if event is not None:
                 yield event
+
+    def _filter_message_events(self, events: list[InputEvent]) -> list[InputEvent]:
+        filtered_events: list[InputEvent] = []
+        seen_texts: set[str] = set()
+
+        for event in events:
+            normalized_text = _normalize_chat_text(event.text)
+            if len(event.text) > self._config.max_message_length:
+                continue
+            if (
+                self._config.drop_duplicate_text_per_poll
+                and normalized_text
+                and normalized_text in seen_texts
+            ):
+                continue
+            if (
+                self._config.drop_symbol_heavy_messages
+                and _symbol_ratio(event.text) >= self._config.symbol_heavy_threshold
+            ):
+                continue
+
+            if normalized_text:
+                seen_texts.add(normalized_text)
+            filtered_events.append(event)
+
+        return filtered_events
+
+    def _select_message_events(self, events: list[InputEvent]) -> list[InputEvent]:
+        if len(events) <= self._config.max_selected_per_poll:
+            return [
+                event.model_copy(
+                    update={
+                        "metadata": {
+                            **event.metadata,
+                            "selection_rank": index + 1,
+                            "selection_score": _score_chat_event(event),
+                            "selection_dropped_count": 0,
+                        }
+                    }
+                )
+                for index, event in enumerate(events)
+            ]
+
+        scored_events = [
+            (_score_chat_event(event), index, event) for index, event in enumerate(events)
+        ]
+        selected = sorted(scored_events, key=lambda item: (-item[0], item[1]))[
+            : self._config.max_selected_per_poll
+        ]
+        dropped_count = len(events) - len(selected)
+        return [
+            event.model_copy(
+                update={
+                    "metadata": {
+                        **event.metadata,
+                        "selection_rank": rank,
+                        "selection_score": score,
+                        "selection_dropped_count": dropped_count,
+                    }
+                }
+            )
+            for rank, (score, _index, event) in enumerate(selected, start=1)
+        ]
 
     def _build_event(self, item: dict[str, Any]) -> InputEvent | None:
         message_id = item.get("id")
@@ -205,6 +270,42 @@ def _parse_youtube_timestamp(value: Any) -> datetime:
         except ValueError:
             pass
     return datetime.now(tz=UTC)
+
+
+def _score_chat_event(event: InputEvent) -> int:
+    text = event.text.strip()
+    metadata = event.metadata
+    score = 0
+
+    if metadata.get("is_chat_owner"):
+        score += 8
+    if metadata.get("is_chat_moderator"):
+        score += 5
+    if metadata.get("is_verified"):
+        score += 3
+    if metadata.get("is_chat_sponsor"):
+        score += 2
+    if any(marker in text for marker in ("?", "？", "どう", "なに", "何", "教えて")):
+        score += 4
+    if any(marker in text for marker in ("音量", "聞こえ", "見え", "映像", "遅延", "ラグ")):
+        score += 3
+    if 4 <= len(text) <= 80:
+        score += 2
+    if len(text) <= 2:
+        score -= 3
+    return score
+
+
+def _normalize_chat_text(text: str) -> str:
+    return "".join(text.casefold().split())
+
+
+def _symbol_ratio(text: str) -> float:
+    visible_chars = [char for char in text if not char.isspace()]
+    if not visible_chars:
+        return 1.0
+    symbol_count = sum(1 for char in visible_chars if not char.isalnum())
+    return symbol_count / len(visible_chars)
 
 
 def _format_youtube_http_error(status_code: int, detail: str) -> str:

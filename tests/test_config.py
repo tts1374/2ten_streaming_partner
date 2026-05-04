@@ -20,6 +20,11 @@ def test_default_config_uses_phase1_model_roles() -> None:
     assert config.youtube_chat.live_chat_id is None
     assert config.youtube_chat.video_id is None
     assert config.youtube_chat.api_key_env == "YOUTUBE_API_KEY"
+    assert config.youtube_chat.max_selected_per_poll == 3
+    assert config.youtube_chat.max_message_length == 160
+    assert config.youtube_chat.drop_symbol_heavy_messages is True
+    assert config.youtube_chat.symbol_heavy_threshold == 0.6
+    assert config.youtube_chat.drop_duplicate_text_per_poll is True
     assert config.youtube_chat.skip_initial_history is True
     assert config.runtime.idle_timeout_seconds == 30.0
     assert config.runtime.streamer_name == "つてん"
@@ -45,6 +50,11 @@ poll_interval_seconds = 3.0
 min_poll_interval_seconds = 2.0
 request_timeout_seconds = 4.0
 max_results = 200
+max_selected_per_poll = 5
+max_message_length = 80
+drop_symbol_heavy_messages = false
+symbol_heavy_threshold = 0.75
+drop_duplicate_text_per_poll = false
 skip_initial_history = false
 
 [runtime]
@@ -70,6 +80,11 @@ idle_topics = ["判定が光った話", "次の曲の見どころ"]
     assert config.youtube_chat.min_poll_interval_seconds == 2.0
     assert config.youtube_chat.request_timeout_seconds == 4.0
     assert config.youtube_chat.max_results == 200
+    assert config.youtube_chat.max_selected_per_poll == 5
+    assert config.youtube_chat.max_message_length == 80
+    assert config.youtube_chat.drop_symbol_heavy_messages is False
+    assert config.youtube_chat.symbol_heavy_threshold == 0.75
+    assert config.youtube_chat.drop_duplicate_text_per_poll is False
     assert config.youtube_chat.skip_initial_history is False
     assert config.runtime.idle_timeout_seconds == 12.5
     assert config.runtime.streamer_name == "配信者"
