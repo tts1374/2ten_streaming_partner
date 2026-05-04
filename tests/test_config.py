@@ -18,6 +18,7 @@ def test_default_config_uses_phase1_model_roles() -> None:
     assert config.overlay.show_detail is False
     assert config.overlay.clear_after_speech_seconds == 2.5
     assert config.youtube_chat.live_chat_id is None
+    assert config.youtube_chat.video_id is None
     assert config.youtube_chat.api_key_env == "YOUTUBE_API_KEY"
     assert config.youtube_chat.skip_initial_history is True
     assert config.runtime.idle_timeout_seconds == 30.0
@@ -36,6 +37,7 @@ clear_after_speech_seconds = 1.25
 
 [youtube_chat]
 live_chat_id = "live-chat-1"
+video_id = "video-1"
 api_key_env = "YT_TEST_KEY"
 poll_interval_seconds = 3.0
 min_poll_interval_seconds = 2.0
@@ -58,6 +60,7 @@ idle_topics = ["判定が光った話", "次の曲の見どころ"]
     assert config.overlay.show_detail is True
     assert config.overlay.clear_after_speech_seconds == 1.25
     assert config.youtube_chat.live_chat_id == "live-chat-1"
+    assert config.youtube_chat.video_id == "video-1"
     assert config.youtube_chat.api_key_env == "YT_TEST_KEY"
     assert config.youtube_chat.poll_interval_seconds == 3.0
     assert config.youtube_chat.min_poll_interval_seconds == 2.0

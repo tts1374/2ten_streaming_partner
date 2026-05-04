@@ -53,7 +53,12 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--use-youtube-chat",
         action="store_true",
-        help="Read YouTube Live Chat from youtube_chat.live_chat_id instead of fake comments.",
+        help="Read YouTube Live Chat from youtube_chat config instead of fake comments.",
+    )
+    parser.add_argument(
+        "--youtube-video-id",
+        default=None,
+        help="Resolve youtube_chat.live_chat_id from a YouTube video ID for this run.",
     )
     subparsers = parser.add_subparsers(dest="command")
     inspect_parser = subparsers.add_parser(
@@ -104,10 +109,20 @@ def build_llm_router(
     return LLMRouter(config=config, client=client)
 
 
-def build_input_source(config: AppConfig, *, use_youtube_chat: bool) -> InputSource:
+def build_input_source(
+    config: AppConfig,
+    *,
+    use_youtube_chat: bool,
+    youtube_video_id: str | None = None,
+) -> InputSource:
     if use_youtube_chat:
         api_key = os.environ.get(config.youtube_chat.api_key_env, "")
-        source: InputSource = YouTubeChatInputSource(config.youtube_chat, api_key=api_key)
+        youtube_chat_config = config.youtube_chat
+        if youtube_video_id:
+            youtube_chat_config = youtube_chat_config.model_copy(
+                update={"live_chat_id": None, "video_id": youtube_video_id}
+            )
+        source: InputSource = YouTubeChatInputSource(youtube_chat_config, api_key=api_key)
     else:
         source = FakeInputSource.from_texts(
             [
@@ -131,10 +146,15 @@ async def run(
     use_aivis: bool = False,
     serve_overlay: bool = False,
     use_youtube_chat: bool = False,
+    youtube_video_id: str | None = None,
 ) -> None:
     store = SQLiteStore(config.storage.sqlite_path)
     store.initialize()
-    source = build_input_source(config, use_youtube_chat=use_youtube_chat)
+    source = build_input_source(
+        config,
+        use_youtube_chat=use_youtube_chat,
+        youtube_video_id=youtube_video_id,
+    )
     broadcaster = OverlayStateBroadcaster()
     runner = OverlayServerRunner(config.overlay, broadcaster) if serve_overlay else None
     if runner is not None:
@@ -263,6 +283,7 @@ def main() -> None:
             use_aivis=args.use_aivis,
             serve_overlay=args.serve_overlay,
             use_youtube_chat=args.use_youtube_chat,
+            youtube_video_id=args.youtube_video_id,
         )
     )
 

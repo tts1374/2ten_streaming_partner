@@ -36,6 +36,7 @@ class OverlayConfig(BaseModel):
 
 class YouTubeChatConfig(BaseModel):
     live_chat_id: str | None = None
+    video_id: str | None = None
     api_key_env: str = Field(default="YOUTUBE_API_KEY", min_length=1)
     poll_interval_seconds: float = Field(default=5.0, gt=0)
     min_poll_interval_seconds: float = Field(default=1.0, gt=0)

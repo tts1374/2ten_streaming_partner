@@ -11,6 +11,7 @@ def test_parser_defaults_to_placeholder_route() -> None:
     assert args.use_aivis is False
     assert args.serve_overlay is False
     assert args.use_youtube_chat is False
+    assert args.youtube_video_id is None
 
 
 def test_parser_accepts_use_ollama_switch() -> None:
@@ -41,6 +42,12 @@ def test_parser_accepts_use_youtube_chat_switch() -> None:
     args = build_parser().parse_args(["--use-youtube-chat"])
 
     assert args.use_youtube_chat is True
+
+
+def test_parser_accepts_youtube_video_id_override() -> None:
+    args = build_parser().parse_args(["--use-youtube-chat", "--youtube-video-id", "video-1"])
+
+    assert args.youtube_video_id == "video-1"
 
 
 def test_parser_accepts_inspect_latency_command() -> None:

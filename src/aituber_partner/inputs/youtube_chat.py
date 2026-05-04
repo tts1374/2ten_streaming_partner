@@ -26,7 +26,8 @@ class YouTubeChatError(RuntimeError):
 class YouTubeChatInputSource:
     """Poll YouTube Live Chat and yield new chat messages as InputEvent objects."""
 
-    _BASE_URL = "https://www.googleapis.com/youtube/v3/liveChat/messages"
+    _CHAT_MESSAGES_URL = "https://www.googleapis.com/youtube/v3/liveChat/messages"
+    _VIDEOS_URL = "https://www.googleapis.com/youtube/v3/videos"
 
     def __init__(
         self,
@@ -37,8 +38,10 @@ class YouTubeChatInputSource:
         max_pages: int | None = None,
         seen_cache_size: int = 4096,
     ) -> None:
-        if not config.live_chat_id:
-            raise ValueError("youtube_chat.live_chat_id is required for YouTube chat input.")
+        if not config.live_chat_id and not config.video_id:
+            raise ValueError(
+                "youtube_chat.live_chat_id or youtube_chat.video_id is required for YouTube chat input."
+            )
         if not api_key:
             raise ValueError("YouTube API key is required for YouTube chat input.")
         if seen_cache_size <= 0:
@@ -48,17 +51,19 @@ class YouTubeChatInputSource:
         self._api_key = api_key
         self._fetch_json = fetch_json or self._fetch_json_with_urllib
         self._max_pages = max_pages
+        self._live_chat_id = config.live_chat_id
         self._seen_ids: deque[str] = deque(maxlen=seen_cache_size)
         self._seen_lookup: set[str] = set()
 
     async def events(self) -> AsyncIterator[InputEvent]:
+        live_chat_id = await self._resolve_live_chat_id()
         page_token: str | None = None
         page_count = 0
 
         while self._max_pages is None or page_count < self._max_pages:
             payload = await asyncio.to_thread(
                 self._fetch_json,
-                self._build_url(page_token),
+                self._build_chat_messages_url(live_chat_id, page_token),
                 self._config.request_timeout_seconds,
             )
             page_count += 1
@@ -77,16 +82,52 @@ class YouTubeChatInputSource:
 
             await asyncio.sleep(self._next_poll_delay(payload))
 
-    def _build_url(self, page_token: str | None) -> str:
+    async def _resolve_live_chat_id(self) -> str:
+        if self._live_chat_id:
+            return self._live_chat_id
+
+        if not self._config.video_id:
+            raise YouTubeChatError("YouTube video ID is missing, so live chat ID cannot be resolved.")
+
+        payload = await asyncio.to_thread(
+            self._fetch_json,
+            self._build_videos_url(self._config.video_id),
+            self._config.request_timeout_seconds,
+        )
+        items = payload.get("items")
+        if not isinstance(items, list) or not items:
+            raise YouTubeChatError(
+                "YouTube video was not found. Check youtube_chat.video_id and API key access."
+            )
+
+        details = items[0].get("liveStreamingDetails") if isinstance(items[0], dict) else None
+        live_chat_id = details.get("activeLiveChatId") if isinstance(details, dict) else None
+        if not isinstance(live_chat_id, str) or not live_chat_id:
+            raise YouTubeChatError(
+                "YouTube video has no active live chat. The stream may be offline, ended, or chat may be disabled."
+            )
+
+        self._live_chat_id = live_chat_id
+        return live_chat_id
+
+    def _build_chat_messages_url(self, live_chat_id: str, page_token: str | None) -> str:
         params = {
             "part": "id,snippet,authorDetails",
-            "liveChatId": self._config.live_chat_id,
+            "liveChatId": live_chat_id,
             "key": self._api_key,
             "maxResults": str(self._config.max_results),
         }
         if page_token:
             params["pageToken"] = page_token
-        return f"{self._BASE_URL}?{urlencode(params)}"
+        return f"{self._CHAT_MESSAGES_URL}?{urlencode(params)}"
+
+    def _build_videos_url(self, video_id: str) -> str:
+        params = {
+            "part": "liveStreamingDetails",
+            "id": video_id,
+            "key": self._api_key,
+        }
+        return f"{self._VIDEOS_URL}?{urlencode(params)}"
 
     def _iter_message_events(self, payload: dict[str, Any]) -> Iterator[InputEvent]:
         for item in payload.get("items", []):
@@ -114,7 +155,8 @@ class YouTubeChatInputSource:
             timestamp=_parse_youtube_timestamp(snippet.get("publishedAt")),
             metadata={
                 "youtube_message_id": message_id,
-                "live_chat_id": self._config.live_chat_id,
+                "live_chat_id": self._live_chat_id,
+                "video_id": self._config.video_id,
                 "message_type": snippet.get("type"),
                 "author_channel_id": author_details.get("channelId"),
                 "is_chat_owner": author_details.get("isChatOwner"),
@@ -149,7 +191,7 @@ class YouTubeChatInputSource:
                 return json.loads(response.read().decode("utf-8"))
         except HTTPError as exc:
             detail = exc.read().decode("utf-8", errors="replace")
-            raise YouTubeChatError(f"YouTube chat API returned HTTP {exc.code}: {detail}") from exc
+            raise YouTubeChatError(_format_youtube_http_error(exc.code, detail)) from exc
         except URLError as exc:
             raise YouTubeChatError(f"YouTube chat API request failed: {exc.reason}") from exc
         except json.JSONDecodeError as exc:
@@ -163,3 +205,50 @@ def _parse_youtube_timestamp(value: Any) -> datetime:
         except ValueError:
             pass
     return datetime.now(tz=UTC)
+
+
+def _format_youtube_http_error(status_code: int, detail: str) -> str:
+    reason, message = _extract_youtube_error(detail)
+    reason_help = {
+        "pageTokenInvalid": (
+            "YouTube chat page token expired or became invalid. Restart the input source to resume polling."
+        ),
+        "liveChatEnded": "YouTube live chat has ended. Stop the run or switch to another active stream.",
+        "liveChatDisabled": "YouTube live chat is disabled for this video. Enable chat or choose another stream.",
+        "liveChatNotFound": "YouTube live chat was not found. Check live_chat_id or use video_id resolution.",
+        "forbidden": "YouTube API access was forbidden. Check API key permissions and quota.",
+        "quotaExceeded": "YouTube API quota was exceeded. Wait for quota reset or use another API project.",
+        "keyInvalid": "YouTube API key is invalid. Check the configured api_key_env value.",
+    }.get(reason)
+
+    parts = [f"YouTube chat API returned HTTP {status_code}"]
+    if reason:
+        parts.append(f"reason={reason}")
+    if reason_help:
+        parts.append(reason_help)
+    elif message:
+        parts.append(message)
+    else:
+        parts.append(detail)
+    return ": ".join(parts)
+
+
+def _extract_youtube_error(detail: str) -> tuple[str | None, str | None]:
+    try:
+        payload = json.loads(detail)
+    except json.JSONDecodeError:
+        return None, None
+
+    error = payload.get("error")
+    if not isinstance(error, dict):
+        return None, None
+
+    message = error.get("message") if isinstance(error.get("message"), str) else None
+    errors = error.get("errors")
+    if isinstance(errors, list):
+        for item in errors:
+            if isinstance(item, dict) and isinstance(item.get("reason"), str):
+                return item["reason"], message
+
+    status = error.get("status")
+    return status if isinstance(status, str) else None, message
