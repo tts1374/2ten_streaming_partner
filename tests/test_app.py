@@ -57,6 +57,27 @@ def test_parser_accepts_inspect_latency_command() -> None:
     assert args.limit == 5
 
 
+def test_parser_accepts_inspect_events_command() -> None:
+    args = build_parser().parse_args(["inspect-events", "--limit", "5"])
+
+    assert args.command == "inspect-events"
+    assert args.limit == 5
+
+
+def test_parser_accepts_inspect_replies_command() -> None:
+    args = build_parser().parse_args(["inspect-replies", "--limit", "5"])
+
+    assert args.command == "inspect-replies"
+    assert args.limit == 5
+
+
+def test_parser_accepts_inspect_speech_command() -> None:
+    args = build_parser().parse_args(["inspect-speech", "--limit", "5"])
+
+    assert args.command == "inspect-speech"
+    assert args.limit == 5
+
+
 def test_parser_accepts_demo_overlay_command() -> None:
     args = build_parser().parse_args(
         ["demo-overlay", "--text", "OBS表示テスト", "--seconds", "8.5", "--keep-visible"]

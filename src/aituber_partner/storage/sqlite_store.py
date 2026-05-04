@@ -225,6 +225,63 @@ class SQLiteStore:
             ).fetchall()
         return [dict(row) for row in rows]
 
+    def fetch_recent_input_events(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        self._ensure_initialized()
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT
+                    id, source, author, text, timestamp, metadata_json
+                FROM input_events
+                ORDER BY timestamp DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fetch_recent_generated_replies(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        self._ensure_initialized()
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT
+                    generated_replies.id,
+                    generated_replies.input_event_id,
+                    input_events.source AS input_source,
+                    input_events.text AS input_text,
+                    generated_replies.text,
+                    generated_replies.generation_model,
+                    generated_replies.latency_ms,
+                    generated_replies.created_at
+                FROM generated_replies
+                LEFT JOIN input_events ON input_events.id = generated_replies.input_event_id
+                ORDER BY generated_replies.created_at DESC, generated_replies.id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
+    def fetch_recent_speech_jobs(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        self._ensure_initialized()
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT
+                    id, reply_id, input_event_id, status, voice_id, text,
+                    audio_path, error, latency_ms, created_at
+                FROM speech_jobs
+                ORDER BY created_at DESC, id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def _insert_speech_job(
         self,
         connection: sqlite3.Connection,

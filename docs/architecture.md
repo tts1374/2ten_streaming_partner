@@ -176,6 +176,14 @@ uv run aituber-partner demo-overlay --text "OBS表示テスト中です！" --se
 uv run aituber-partner inspect-latency --limit 20
 ```
 
+実機確認後の振り返りでは、SQLiteに保存された入力、生成回答、TTS結果もCLIから確認できる。
+
+```powershell
+uv run aituber-partner inspect-events --limit 20
+uv run aituber-partner inspect-replies --limit 20
+uv run aituber-partner inspect-speech --limit 20
+```
+
 ### 4.2 Overlay Process
 
 役割:

@@ -162,3 +162,79 @@ def test_fetch_recent_llm_calls_returns_newest_first_with_limit(tmp_path) -> Non
     assert [row["latency_ms"] for row in rows] == [102, 101]
     assert rows[0]["think"] == 0
     assert rows[0]["success"] == 1
+
+
+def test_fetch_recent_input_events_returns_newest_first_with_limit(tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    store = SQLiteStore(db_path)
+    for index in range(3):
+        event = InputEvent(source="youtube_chat", text=f"コメント{index}", author="viewer")
+        processed = ProcessedEvent(
+            input_event=event,
+            safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
+            reply=None,
+            overlay=OverlayState(status="idle", text=""),
+        )
+        store.record_processed_event(processed)
+
+    rows = store.fetch_recent_input_events(limit=2)
+
+    assert [row["text"] for row in rows] == ["コメント2", "コメント1"]
+    assert rows[0]["source"] == "youtube_chat"
+    assert rows[0]["author"] == "viewer"
+
+
+def test_fetch_recent_generated_replies_includes_input_context(tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    store = SQLiteStore(db_path)
+    event = InputEvent(source="youtube_chat", text="音量大丈夫？", author="viewer")
+    reply = GeneratedReply(text="つてん、音量どうかな？", generation_model="qwen3:8b", latency_ms=123)
+    processed = ProcessedEvent(
+        input_event=event,
+        safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
+        output_safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
+        reply=reply,
+        overlay=OverlayState(status="speaking", text=reply.text),
+    )
+    store.record_processed_event(processed)
+
+    rows = store.fetch_recent_generated_replies(limit=1)
+
+    assert rows[0]["id"] == reply.id
+    assert rows[0]["input_event_id"] == event.id
+    assert rows[0]["input_source"] == "youtube_chat"
+    assert rows[0]["input_text"] == "音量大丈夫？"
+    assert rows[0]["text"] == "つてん、音量どうかな？"
+    assert rows[0]["generation_model"] == "qwen3:8b"
+
+
+def test_fetch_recent_speech_jobs_returns_status_and_error(tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    store = SQLiteStore(db_path)
+    event = InputEvent(source="youtube_chat", text="聞こえてる？", author="viewer")
+    reply = GeneratedReply(text="声の聞こえ方どう？", generation_model="qwen3:8b", latency_ms=123)
+    speech_job = SpeechJob(
+        reply_id=reply.id,
+        text=reply.text,
+        voice_id=888753760,
+        status="failed",
+        error="AivisSpeech is not running",
+    )
+    processed = ProcessedEvent(
+        input_event=event,
+        safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
+        output_safety=SafetyDecision(status="allow", reasons=["safe"], confidence=0.9),
+        reply=reply,
+        speech_job=speech_job,
+        overlay=OverlayState(status="speaking", text=reply.text),
+    )
+    store.record_processed_event(processed)
+
+    rows = store.fetch_recent_speech_jobs(limit=1)
+
+    assert rows[0]["id"] == speech_job.id
+    assert rows[0]["reply_id"] == reply.id
+    assert rows[0]["input_event_id"] == event.id
+    assert rows[0]["status"] == "failed"
+    assert rows[0]["voice_id"] == 888753760
+    assert rows[0]["error"] == "AivisSpeech is not running"

@@ -71,6 +71,36 @@ def build_parser() -> argparse.ArgumentParser:
         default=20,
         help="Maximum number of recent LLM calls to display.",
     )
+    inspect_events_parser = subparsers.add_parser(
+        "inspect-events",
+        help="Show recent normalized input events from SQLite.",
+    )
+    inspect_events_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of recent input events to display.",
+    )
+    inspect_replies_parser = subparsers.add_parser(
+        "inspect-replies",
+        help="Show recent generated co-host replies from SQLite.",
+    )
+    inspect_replies_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of recent replies to display.",
+    )
+    inspect_speech_parser = subparsers.add_parser(
+        "inspect-speech",
+        help="Show recent AivisSpeech jobs from SQLite.",
+    )
+    inspect_speech_parser.add_argument(
+        "--limit",
+        type=int,
+        default=20,
+        help="Maximum number of recent speech jobs to display.",
+    )
     demo_parser = subparsers.add_parser(
         "demo-overlay",
         help="Serve the OBS overlay and show a demo subtitle for visual adjustment.",
@@ -200,19 +230,124 @@ def inspect_latency(config: AppConfig, *, limit: int) -> None:
         "success": 7,
         "error": 32,
     }
+    _print_table(
+        headers,
+        widths,
+        [
+            {
+                "id": str(row["id"]),
+                "model": row["model"],
+                "purpose": row["purpose"],
+                "latency_ms": str(row["latency_ms"]),
+                "think": _format_bool(row["think"]),
+                "success": _format_bool(row["success"]),
+                "error": _truncate(row["error"] or "", widths["error"]),
+            }
+            for row in rows
+        ],
+    )
+
+
+def inspect_events(config: AppConfig, *, limit: int) -> None:
+    store = SQLiteStore(config.storage.sqlite_path)
+    rows = store.fetch_recent_input_events(limit=max(1, limit))
+    if not rows:
+        print(f"No input events found in {store.path}.")
+        return
+
+    headers = ["source", "author", "text", "metadata", "timestamp"]
+    widths = {"source": 12, "author": 16, "text": 40, "metadata": 36, "timestamp": 25}
+    _print_table(
+        headers,
+        widths,
+        [
+            {
+                "source": row["source"],
+                "author": _truncate(row["author"] or "", widths["author"]),
+                "text": _truncate(row["text"], widths["text"]),
+                "metadata": _truncate(row["metadata_json"], widths["metadata"]),
+                "timestamp": row["timestamp"],
+            }
+            for row in rows
+        ],
+    )
+
+
+def inspect_replies(config: AppConfig, *, limit: int) -> None:
+    store = SQLiteStore(config.storage.sqlite_path)
+    rows = store.fetch_recent_generated_replies(limit=max(1, limit))
+    if not rows:
+        print(f"No generated replies found in {store.path}.")
+        return
+
+    headers = ["source", "input", "reply", "model", "latency_ms", "created_at"]
+    widths = {
+        "source": 12,
+        "input": 36,
+        "reply": 44,
+        "model": 18,
+        "latency_ms": 10,
+        "created_at": 25,
+    }
+    _print_table(
+        headers,
+        widths,
+        [
+            {
+                "source": row["input_source"] or "",
+                "input": _truncate(row["input_text"] or "", widths["input"]),
+                "reply": _truncate(row["text"], widths["reply"]),
+                "model": row["generation_model"],
+                "latency_ms": str(row["latency_ms"]),
+                "created_at": row["created_at"],
+            }
+            for row in rows
+        ],
+    )
+
+
+def inspect_speech(config: AppConfig, *, limit: int) -> None:
+    store = SQLiteStore(config.storage.sqlite_path)
+    rows = store.fetch_recent_speech_jobs(limit=max(1, limit))
+    if not rows:
+        print(f"No speech jobs found in {store.path}.")
+        return
+
+    headers = ["status", "voice_id", "text", "latency_ms", "audio_path", "error"]
+    widths = {
+        "status": 8,
+        "voice_id": 10,
+        "text": 40,
+        "latency_ms": 10,
+        "audio_path": 32,
+        "error": 32,
+    }
+    _print_table(
+        headers,
+        widths,
+        [
+            {
+                "status": row["status"],
+                "voice_id": str(row["voice_id"]),
+                "text": _truncate(row["text"], widths["text"]),
+                "latency_ms": str(row["latency_ms"]),
+                "audio_path": _truncate(row["audio_path"] or "", widths["audio_path"]),
+                "error": _truncate(row["error"] or "", widths["error"]),
+            }
+            for row in rows
+        ],
+    )
+
+
+def _print_table(
+    headers: list[str],
+    widths: dict[str, int],
+    rows: list[dict[str, str]],
+) -> None:
     print(" ".join(header.ljust(widths[header]) for header in headers))
     print(" ".join("-" * widths[header] for header in headers))
     for row in rows:
-        values = {
-            "id": str(row["id"]),
-            "model": row["model"],
-            "purpose": row["purpose"],
-            "latency_ms": str(row["latency_ms"]),
-            "think": _format_bool(row["think"]),
-            "success": _format_bool(row["success"]),
-            "error": _truncate(row["error"] or "", widths["error"]),
-        }
-        print(" ".join(values[header].ljust(widths[header]) for header in headers))
+        print(" ".join(row[header].ljust(widths[header]) for header in headers))
 
 
 async def demo_overlay(
@@ -264,6 +399,15 @@ def main() -> None:
     config = load_config(args.config)
     if args.command == "inspect-latency":
         inspect_latency(config, limit=args.limit)
+        return
+    if args.command == "inspect-events":
+        inspect_events(config, limit=args.limit)
+        return
+    if args.command == "inspect-replies":
+        inspect_replies(config, limit=args.limit)
+        return
+    if args.command == "inspect-speech":
+        inspect_speech(config, limit=args.limit)
         return
     if args.command == "demo-overlay":
         asyncio.run(
