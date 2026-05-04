@@ -22,6 +22,13 @@ def test_parser_accepts_fast_output_safety_switch() -> None:
     assert args.fast_output_safety is True
 
 
+def test_parser_accepts_inspect_latency_command() -> None:
+    args = build_parser().parse_args(["inspect-latency", "--limit", "5"])
+
+    assert args.command == "inspect-latency"
+    assert args.limit == 5
+
+
 def test_build_llm_router_returns_none_without_ollama_switch() -> None:
     router = build_llm_router(AppConfig(), use_ollama=False)
 

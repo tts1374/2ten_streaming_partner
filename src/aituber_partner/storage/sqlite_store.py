@@ -190,6 +190,22 @@ class SQLiteStore:
                 ),
             )
 
+    def fetch_recent_llm_calls(self, *, limit: int = 20) -> list[dict[str, Any]]:
+        self._ensure_initialized()
+        with self._connect() as connection:
+            connection.row_factory = sqlite3.Row
+            rows = connection.execute(
+                """
+                SELECT
+                    id, model, purpose, think, latency_ms, success, error, created_at
+                FROM llm_calls
+                ORDER BY id DESC
+                LIMIT ?
+                """,
+                (limit,),
+            ).fetchall()
+        return [dict(row) for row in rows]
+
     def _insert_safety_decision(
         self,
         connection: sqlite3.Connection,

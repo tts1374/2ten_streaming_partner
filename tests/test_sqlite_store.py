@@ -93,3 +93,24 @@ def test_record_llm_call_persists_failures_closed_for_diagnostics(tmp_path) -> N
     assert row["success"] == 0
     assert row["error"] == "connection failed"
     assert row["latency_ms"] == 0
+
+
+def test_fetch_recent_llm_calls_returns_newest_first_with_limit(tmp_path) -> None:
+    db_path = tmp_path / "app.db"
+    store = SQLiteStore(db_path)
+    for index in range(3):
+        request = LLMRequest(
+            model="qwen3.5:4b",
+            purpose=f"safety-{index}",
+            prompt="check",
+            think=False,
+        )
+        response = LLMResponse(model="qwen3.5:4b", text="{}", latency_ms=100 + index)
+        store.record_llm_call(request, response=response)
+
+    rows = store.fetch_recent_llm_calls(limit=2)
+
+    assert [row["purpose"] for row in rows] == ["safety-2", "safety-1"]
+    assert [row["latency_ms"] for row in rows] == [102, 101]
+    assert rows[0]["think"] == 0
+    assert rows[0]["success"] == 1
