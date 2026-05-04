@@ -45,12 +45,13 @@ def test_parser_accepts_inspect_latency_command() -> None:
 
 def test_parser_accepts_demo_overlay_command() -> None:
     args = build_parser().parse_args(
-        ["demo-overlay", "--text", "OBS表示テスト", "--seconds", "8.5"]
+        ["demo-overlay", "--text", "OBS表示テスト", "--seconds", "8.5", "--keep-visible"]
     )
 
     assert args.command == "demo-overlay"
     assert args.text == "OBS表示テスト"
     assert args.seconds == 8.5
+    assert args.keep_visible is True
 
 
 def test_build_llm_router_returns_none_without_ollama_switch() -> None:

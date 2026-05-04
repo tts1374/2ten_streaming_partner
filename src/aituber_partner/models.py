@@ -52,6 +52,8 @@ class GeneratedReply(BaseModel):
 class OverlayState(BaseModel):
     status: OverlayStatus = "idle"
     text: str = ""
+    speaker_name: str = "2ten"
+    show_detail: bool = False
     updated_at: datetime = Field(default_factory=utc_now)
     detail: str | None = None
 

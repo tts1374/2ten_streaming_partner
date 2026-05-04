@@ -21,6 +21,7 @@ from aituber_partner.llm.safety import parse_safety_decision
 from aituber_partner.models import (
     GeneratedReply,
     InputEvent,
+    OverlayStatus,
     OverlayState,
     ProcessedEvent,
     SafetyDecision,
@@ -73,16 +74,16 @@ class LocalClosedLoopOrchestrator:
         self._sleep = sleep
         self._clear_overlay_task: asyncio.Task[None] | None = None
         self._use_local_output_guard = use_local_output_guard
-        self.overlay_state = OverlayState()
+        self.overlay_state = self._build_overlay_state()
         self._publish_overlay_state()
 
     async def run_once_per_event(self) -> AsyncIterator[ProcessedEvent]:
         async for event in self._input_source.events():
-            self._set_overlay_state(OverlayState(status="thinking", text=""))
+            self._set_overlay_state(self._build_overlay_state(status="thinking", text=""))
             safety = await self._classify_safety(event)
 
             if safety.status in {"ignore", "block"}:
-                self._set_overlay_state(OverlayState(status="idle", text=""))
+                self._set_overlay_state(self._build_overlay_state(status="idle", text=""))
                 processed = ProcessedEvent(
                     input_event=event,
                     safety=safety,
@@ -96,7 +97,7 @@ class LocalClosedLoopOrchestrator:
             reply = await self._generate_reply(event, safety)
             output_safety = await self._classify_output_safety(reply.text)
             if output_safety.status in {"ignore", "block"}:
-                self._set_overlay_state(OverlayState(status="idle", text=""))
+                self._set_overlay_state(self._build_overlay_state(status="idle", text=""))
                 processed = ProcessedEvent(
                     input_event=event,
                     safety=safety,
@@ -115,7 +116,7 @@ class LocalClosedLoopOrchestrator:
                     latency_ms=reply.latency_ms,
                 )
 
-            self._set_overlay_state(OverlayState(status="speaking", text=reply.text))
+            self._set_overlay_state(self._build_overlay_state(status="speaking", text=reply.text))
             speech_job = await self._synthesize_speech(reply)
             processed = ProcessedEvent(
                 input_event=event,
@@ -203,6 +204,21 @@ class LocalClosedLoopOrchestrator:
         if self._recorder is not None:
             self._recorder.record_processed_event(processed)
 
+    def _build_overlay_state(
+        self,
+        *,
+        status: OverlayStatus = "idle",
+        text: str = "",
+        detail: str | None = None,
+    ) -> OverlayState:
+        return OverlayState(
+            status=status,
+            text=text,
+            detail=detail,
+            speaker_name=self._config.overlay.speaker_name,
+            show_detail=self._config.overlay.show_detail,
+        )
+
     def _set_overlay_state(self, state: OverlayState) -> None:
         self._cancel_scheduled_overlay_clear()
         self.overlay_state = state
@@ -229,7 +245,7 @@ class LocalClosedLoopOrchestrator:
             await self._sleep(delay)
         if self.overlay_state.status == "speaking":
             self._clear_overlay_task = None
-            self._set_overlay_state(OverlayState(status="idle", text=""))
+            self._set_overlay_state(self._build_overlay_state(status="idle", text=""))
 
     async def _synthesize_speech(self, reply: GeneratedReply) -> SpeechJob | None:
         if self._speech_synthesizer is None:

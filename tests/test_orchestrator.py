@@ -291,8 +291,10 @@ async def test_orchestrator_records_processed_event_when_recorder_is_injected() 
 async def test_orchestrator_publishes_overlay_state_changes() -> None:
     source = FakeInputSource.from_texts(["ナイス精度！"])
     publisher = OverlayPublisher()
+    config = AppConfig()
+    config.overlay.speaker_name = "てん"
     orchestrator = LocalClosedLoopOrchestrator(
-        config=AppConfig(),
+        config=config,
         input_source=source,
         overlay_publisher=publisher,
     )
@@ -301,6 +303,7 @@ async def test_orchestrator_publishes_overlay_state_changes() -> None:
 
     assert [state.status for state in publisher.states] == ["idle", "thinking", "speaking"]
     assert publisher.states[-1].text == results[0].reply.text
+    assert {state.speaker_name for state in publisher.states} == {"てん"}
 
 
 @pytest.mark.asyncio

@@ -29,6 +29,8 @@ class AivisConfig(BaseModel):
 class OverlayConfig(BaseModel):
     host: str = "127.0.0.1"
     port: int = 8787
+    speaker_name: str = Field(default="2ten", min_length=1)
+    show_detail: bool = False
     clear_after_speech_seconds: float = Field(default=2.5, ge=0)
 
 

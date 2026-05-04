@@ -73,6 +73,11 @@ def build_parser() -> argparse.ArgumentParser:
         default=10.0,
         help="How long to keep the demo subtitle visible.",
     )
+    demo_parser.add_argument(
+        "--keep-visible",
+        action="store_true",
+        help="Keep the demo subtitle visible while the overlay server stays open.",
+    )
     return parser
 
 
@@ -171,17 +176,45 @@ def inspect_latency(config: AppConfig, *, limit: int) -> None:
         print(" ".join(values[header].ljust(widths[header]) for header in headers))
 
 
-async def demo_overlay(config: AppConfig, *, text: str, seconds: float) -> None:
-    broadcaster = OverlayStateBroadcaster()
+async def demo_overlay(
+    config: AppConfig,
+    *,
+    text: str,
+    seconds: float,
+    keep_visible: bool = False,
+) -> None:
+    broadcaster = OverlayStateBroadcaster(
+        OverlayState(
+            speaker_name=config.overlay.speaker_name,
+            show_detail=config.overlay.show_detail,
+        )
+    )
     runner = OverlayServerRunner(config.overlay, broadcaster)
     runner.start()
     try:
         print(f"OBS subtitle overlay: {runner.url}")
-        print(f"Showing demo subtitle for {seconds:g} seconds.")
-        broadcaster.publish(OverlayState(status="speaking", text=text))
-        await asyncio.sleep(max(0.0, seconds))
-        broadcaster.publish(OverlayState(status="idle", text=""))
-        print("Demo subtitle cleared. Overlay server is still running. Press Ctrl+C to stop.")
+        broadcaster.publish(
+            OverlayState(
+                status="speaking",
+                text=text,
+                speaker_name=config.overlay.speaker_name,
+                show_detail=config.overlay.show_detail,
+            )
+        )
+        if keep_visible:
+            print("Showing demo subtitle until Ctrl+C.")
+        else:
+            print(f"Showing demo subtitle for {seconds:g} seconds.")
+            await asyncio.sleep(max(0.0, seconds))
+            broadcaster.publish(
+                OverlayState(
+                    status="idle",
+                    text="",
+                    speaker_name=config.overlay.speaker_name,
+                    show_detail=config.overlay.show_detail,
+                )
+            )
+            print("Demo subtitle cleared. Overlay server is still running. Press Ctrl+C to stop.")
         await asyncio.Event().wait()
     finally:
         runner.stop()
@@ -194,7 +227,14 @@ def main() -> None:
         inspect_latency(config, limit=args.limit)
         return
     if args.command == "demo-overlay":
-        asyncio.run(demo_overlay(config, text=args.text, seconds=args.seconds))
+        asyncio.run(
+            demo_overlay(
+                config,
+                text=args.text,
+                seconds=args.seconds,
+                keep_visible=args.keep_visible,
+            )
+        )
         return
 
     asyncio.run(

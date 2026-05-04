@@ -83,6 +83,21 @@
           0 0 10px rgba(0, 0, 0, 0.62);
       }
 
+      .detail {
+        display: none;
+        margin-top: 6px;
+        color: var(--muted);
+        font-size: 16px;
+        font-weight: 700;
+        line-height: 1.3;
+        overflow-wrap: anywhere;
+        text-shadow: 0 2px 4px var(--shadow);
+      }
+
+      .detail[data-visible="true"] {
+        display: block;
+      }
+
       .status {
         position: fixed;
         left: 24px;
@@ -135,18 +150,27 @@
   </head>
   <body>
     <main class="subtitle" data-visible="false" aria-live="polite">
-      <div class="speaker">2ten</div>
-      <div class="text" id="subtitleText"></div>
+      <div class="speaker" id="speakerName">2ten</div>
+      <div>
+        <div class="text" id="subtitleText"></div>
+        <div class="detail" id="subtitleDetail"></div>
+      </div>
     </main>
     <div class="status" id="statusDot" data-status="idle"></div>
     <script>
       const subtitle = document.querySelector(".subtitle");
+      const speakerName = document.getElementById("speakerName");
       const text = document.getElementById("subtitleText");
+      const detail = document.getElementById("subtitleDetail");
       const statusDot = document.getElementById("statusDot");
 
       function applyState(state) {
-        const visible = state.status === "speaking" && state.text.trim().length > 0;
+        const visible = state.status === "speaking" && (state.text || "").trim().length > 0;
+        const detailVisible = Boolean(state.show_detail && state.detail);
+        speakerName.textContent = state.speaker_name || "2ten";
         text.textContent = state.text || "";
+        detail.textContent = state.detail || "";
+        detail.dataset.visible = String(detailVisible);
         subtitle.dataset.visible = String(visible);
         statusDot.dataset.status = state.status || "idle";
       }

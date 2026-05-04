@@ -28,6 +28,7 @@ def test_sse_state_format_uses_overlay_state_event() -> None:
     assert payload.startswith("event: overlay_state\n")
     assert '"status":"speaking"' in payload
     assert '"text":"いい流れ！"' in payload
+    assert '"speaker_name":"2ten"' in payload
     assert payload.endswith("\n\n")
 
 

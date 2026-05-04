@@ -25,6 +25,8 @@ def test_overlay_state_defaults_to_idle() -> None:
 
     assert state.status == "idle"
     assert state.text == ""
+    assert state.speaker_name == "2ten"
+    assert state.show_detail is False
 
 
 def test_speech_job_tracks_created_audio() -> None:
