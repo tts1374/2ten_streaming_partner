@@ -6,7 +6,7 @@ import asyncio
 import json
 import unicodedata
 from collections import deque
-from collections.abc import AsyncIterator, Callable, Iterator
+from collections.abc import Awaitable, AsyncIterator, Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from urllib.error import HTTPError, URLError
@@ -18,6 +18,7 @@ from aituber_partner.models import InputEvent
 
 
 FetchJson = Callable[[str, float], dict[str, Any]]
+ChatCandidateSelector = Callable[[list[InputEvent]], Awaitable[list[InputEvent]]]
 
 
 class YouTubeChatError(RuntimeError):
@@ -36,6 +37,7 @@ class YouTubeChatInputSource:
         *,
         api_key: str,
         fetch_json: FetchJson | None = None,
+        candidate_selector: ChatCandidateSelector | None = None,
         max_pages: int | None = None,
         seen_cache_size: int = 4096,
     ) -> None:
@@ -51,6 +53,7 @@ class YouTubeChatInputSource:
         self._config = config
         self._api_key = api_key
         self._fetch_json = fetch_json or self._fetch_json_with_urllib
+        self._candidate_selector = candidate_selector
         self._max_pages = max_pages
         self._live_chat_id = config.live_chat_id
         self._seen_ids: deque[str] = deque(maxlen=seen_cache_size)
@@ -73,8 +76,11 @@ class YouTubeChatInputSource:
             messages = list(self._iter_message_events(payload))
             filtered_messages = self._filter_message_events(messages)
             selected_messages = self._select_message_events(filtered_messages)
+            should_yield_messages = not (self._config.skip_initial_history and page_count == 1)
+            if should_yield_messages and self._candidate_selector is not None:
+                selected_messages = await self._candidate_selector(selected_messages)
 
-            if not (self._config.skip_initial_history and page_count == 1):
+            if should_yield_messages:
                 for event in selected_messages:
                     yield event
 

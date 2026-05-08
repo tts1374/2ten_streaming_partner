@@ -14,6 +14,7 @@ from aituber_partner.inputs.idle_topic import IdleTopicInputSource
 from aituber_partner.inputs.youtube_chat import YouTubeChatInputSource
 from aituber_partner.llm.client import LLMCallRecorder, OllamaClient, RecordingLLMClient
 from aituber_partner.llm.router import LLMRouter
+from aituber_partner.llm.selection import LLMChatSelector
 from aituber_partner.orchestrator import LocalClosedLoopOrchestrator
 from aituber_partner.overlay.server import OverlayServerRunner, OverlayStateBroadcaster
 from aituber_partner.models import OverlayState
@@ -59,6 +60,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--youtube-video-id",
         default=None,
         help="Resolve youtube_chat.live_chat_id from a YouTube video ID for this run.",
+    )
+    parser.add_argument(
+        "--use-llm-chat-selection",
+        action="store_true",
+        help="Use the classifier model to pick one YouTube chat candidate after lightweight filtering.",
     )
     subparsers = parser.add_subparsers(dest="command")
     inspect_parser = subparsers.add_parser(
@@ -164,6 +170,8 @@ def build_input_source(
     *,
     use_youtube_chat: bool,
     youtube_video_id: str | None = None,
+    llm_router: LLMRouter | None = None,
+    use_llm_chat_selection: bool = False,
 ) -> InputSource:
     if use_youtube_chat:
         api_key = os.environ.get(config.youtube_chat.api_key_env, "")
@@ -172,7 +180,19 @@ def build_input_source(
             youtube_chat_config = youtube_chat_config.model_copy(
                 update={"live_chat_id": None, "video_id": youtube_video_id}
             )
-        source: InputSource = YouTubeChatInputSource(youtube_chat_config, api_key=api_key)
+        chat_selector = None
+        if use_llm_chat_selection:
+            if llm_router is None:
+                raise ValueError("--use-llm-chat-selection requires --use-ollama.")
+            chat_selector = LLMChatSelector(
+                llm_router,
+                streamer_name=config.runtime.streamer_name,
+            ).select
+        source: InputSource = YouTubeChatInputSource(
+            youtube_chat_config,
+            api_key=api_key,
+            candidate_selector=chat_selector,
+        )
     else:
         source = FakeInputSource.from_texts(
             [
@@ -198,13 +218,17 @@ async def run(
     serve_overlay: bool = False,
     use_youtube_chat: bool = False,
     youtube_video_id: str | None = None,
+    use_llm_chat_selection: bool = False,
 ) -> None:
     store = SQLiteStore(config.storage.sqlite_path)
     store.initialize()
+    llm_router = build_llm_router(config, use_ollama=use_ollama, recorder=store)
     source = build_input_source(
         config,
         use_youtube_chat=use_youtube_chat,
         youtube_video_id=youtube_video_id,
+        llm_router=llm_router,
+        use_llm_chat_selection=use_llm_chat_selection,
     )
     broadcaster = OverlayStateBroadcaster()
     runner = OverlayServerRunner(config.overlay, broadcaster) if serve_overlay else None
@@ -215,7 +239,7 @@ async def run(
         orchestrator = LocalClosedLoopOrchestrator(
             config=config,
             input_source=source,
-            llm_router=build_llm_router(config, use_ollama=use_ollama, recorder=store),
+            llm_router=llm_router,
             speech_synthesizer=AivisSpeechClient(config.aivis, config.storage) if use_aivis else None,
             audio_player=WaveAudioPlayer() if use_aivis else None,
             recorder=store,
@@ -515,6 +539,7 @@ def main() -> None:
             serve_overlay=args.serve_overlay,
             use_youtube_chat=args.use_youtube_chat,
             youtube_video_id=args.youtube_video_id,
+            use_llm_chat_selection=args.use_llm_chat_selection,
         )
     )
 

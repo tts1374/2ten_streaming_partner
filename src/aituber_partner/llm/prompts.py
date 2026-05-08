@@ -19,6 +19,11 @@ REPLY_SYSTEM_PROMPT = (
     "Never include thinking, analysis, XML-like reasoning tags, or internal notes."
 )
 
+SELECTION_SYSTEM_PROMPT = (
+    "You select one useful Japanese YouTube Live Chat comment for a music-game co-host. "
+    "Return only JSON with selected_index, reason, and confidence."
+)
+
 
 def build_input_safety_prompt(event: InputEvent) -> str:
     """Build the minimal safety classification prompt for an input event."""
@@ -128,5 +133,44 @@ def build_output_safety_prompt(reply_text: str) -> str:
             "Return only JSON like:",
             '{"status":"allow","reasons":["safe"],"safe_topic":null,"confidence":0.9}',
             f"reply: {reply_text}",
+        ]
+    )
+
+
+def build_chat_selection_prompt(
+    events: list[InputEvent],
+    *,
+    streamer_name: str = "つてん",
+) -> str:
+    """Build a compact JSON-only selection prompt for filtered chat candidates."""
+
+    candidate_lines = []
+    for index, event in enumerate(events, start=1):
+        candidate_lines.append(
+            "\n".join(
+                [
+                    f"{index}. author: {event.author or 'unknown'}",
+                    f"   owner: {bool(event.metadata.get('is_chat_owner'))}",
+                    f"   moderator: {bool(event.metadata.get('is_chat_moderator'))}",
+                    f"   verified: {bool(event.metadata.get('is_verified'))}",
+                    f"   lightweight_score: {event.metadata.get('selection_score', 0)}",
+                    f"   text: {event.text}",
+                ]
+            )
+        )
+
+    return "\n".join(
+        [
+            f"Choose the single comment most worth passing to the streamer {streamer_name}.",
+            "Prefer safe, concrete comments that help the stream move forward.",
+            "Good picks include questions, setup/status checks, play-related observations,",
+            "and comments that are easy for a co-host to relay briefly.",
+            "Do not pick harassment, sexual/violent/illegal content, personal information,",
+            "bait, viewer attacks, streamer attacks, spam, or comments with no useful hook.",
+            "If no candidate is worth using, set selected_index to null.",
+            "Return only JSON like:",
+            '{"selected_index":2,"reason":"音量確認で配信運用に役立つ","confidence":0.82}',
+            "Candidates:",
+            *candidate_lines,
         ]
     )

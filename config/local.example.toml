@@ -23,6 +23,7 @@ clear_after_speech_seconds = 2.5
 [youtube_chat]
 # Fill either live_chat_id or video_id before using --use-youtube-chat.
 # live_chat_id is the direct activeLiveChatId. video_id is resolved at startup.
+# Add --use-llm-chat-selection with --use-ollama to pick one candidate by qwen3.5:4b.
 live_chat_id = ""
 video_id = ""
 api_key_env = "YOUTUBE_API_KEY"
@@ -40,6 +41,15 @@ drop_repetitive_messages = true
 repetitive_text_threshold = 0.7
 repetitive_text_min_length = 8
 skip_initial_history = true
+
+[stt]
+model_name = "small"
+language = "ja"
+device = "auto"
+compute_type = "auto"
+microphone_device = ""
+sample_rate = 16000
+min_confidence = 0.0
 
 [storage]
 sqlite_path = "data/app.db"

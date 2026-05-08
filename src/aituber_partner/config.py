@@ -54,6 +54,16 @@ class YouTubeChatConfig(BaseModel):
     skip_initial_history: bool = True
 
 
+class STTConfig(BaseModel):
+    model_name: str = "small"
+    language: str = "ja"
+    device: str = "auto"
+    compute_type: str = "auto"
+    microphone_device: str | None = None
+    sample_rate: int = Field(default=16000, gt=0)
+    min_confidence: float = Field(default=0.0, ge=0.0, le=1.0)
+
+
 class StorageConfig(BaseModel):
     sqlite_path: Path = Path("data/app.db")
     lancedb_path: Path = Path("data/lancedb")
@@ -80,6 +90,7 @@ class AppConfig(BaseModel):
     aivis: AivisConfig = Field(default_factory=AivisConfig)
     overlay: OverlayConfig = Field(default_factory=OverlayConfig)
     youtube_chat: YouTubeChatConfig = Field(default_factory=YouTubeChatConfig)
+    stt: STTConfig = Field(default_factory=STTConfig)
     storage: StorageConfig = Field(default_factory=StorageConfig)
     runtime: RuntimeConfig = Field(default_factory=RuntimeConfig)
 

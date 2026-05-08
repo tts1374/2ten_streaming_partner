@@ -25,6 +25,15 @@ def test_safety_uses_classifier_model_with_qwen_think_false() -> None:
     assert request.keep_alive == "30m"
 
 
+def test_selection_uses_classifier_model_with_qwen_think_false() -> None:
+    router = LLMRouter(config=AppConfig(), client=FakeLLMClient())
+
+    request = router.build_request(purpose="selection", prompt="select")
+
+    assert request.model == "qwen3.5:4b"
+    assert request.think is False
+
+
 def test_reply_uses_reply_model_not_vision_model_without_images() -> None:
     router = LLMRouter(config=AppConfig(), client=FakeLLMClient())
 
@@ -67,4 +76,3 @@ async def test_generate_strips_thinking_text_from_response() -> None:
 
     assert response.text == "いい感じに拾っていこう！"
     assert client.requests[0].think is False
-

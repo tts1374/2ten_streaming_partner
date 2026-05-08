@@ -30,6 +30,13 @@ def test_default_config_uses_phase1_model_roles() -> None:
     assert config.youtube_chat.repetitive_text_threshold == 0.7
     assert config.youtube_chat.repetitive_text_min_length == 8
     assert config.youtube_chat.skip_initial_history is True
+    assert config.stt.model_name == "small"
+    assert config.stt.language == "ja"
+    assert config.stt.device == "auto"
+    assert config.stt.compute_type == "auto"
+    assert config.stt.microphone_device is None
+    assert config.stt.sample_rate == 16000
+    assert config.stt.min_confidence == 0.0
     assert config.runtime.idle_timeout_seconds == 30.0
     assert config.runtime.streamer_name == "つてん"
     assert config.runtime.idle_repeat_interval_seconds == 120.0
@@ -65,6 +72,15 @@ repetitive_text_threshold = 0.8
 repetitive_text_min_length = 12
 skip_initial_history = false
 
+[stt]
+model_name = "base"
+language = "ja"
+device = "cpu"
+compute_type = "int8"
+microphone_device = "USB Mic"
+sample_rate = 48000
+min_confidence = 0.25
+
 [runtime]
 streamer_name = "配信者"
 idle_timeout_seconds = 12.5
@@ -98,6 +114,13 @@ idle_topics = ["判定が光った話", "次の曲の見どころ"]
     assert config.youtube_chat.repetitive_text_threshold == 0.8
     assert config.youtube_chat.repetitive_text_min_length == 12
     assert config.youtube_chat.skip_initial_history is False
+    assert config.stt.model_name == "base"
+    assert config.stt.language == "ja"
+    assert config.stt.device == "cpu"
+    assert config.stt.compute_type == "int8"
+    assert config.stt.microphone_device == "USB Mic"
+    assert config.stt.sample_rate == 48000
+    assert config.stt.min_confidence == 0.25
     assert config.runtime.idle_timeout_seconds == 12.5
     assert config.runtime.streamer_name == "配信者"
     assert config.runtime.idle_repeat_interval_seconds == 75.0

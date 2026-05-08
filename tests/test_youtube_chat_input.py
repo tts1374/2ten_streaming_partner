@@ -93,6 +93,45 @@ async def test_youtube_chat_source_skips_initial_history_and_deduplicates() -> N
 
 
 @pytest.mark.asyncio
+async def test_youtube_chat_source_does_not_llm_select_skipped_initial_history() -> None:
+    payloads = [
+        {
+            "nextPageToken": "page-2",
+            "pollingIntervalMillis": 1,
+            "items": [_message("old-1", "初回履歴")],
+        },
+        {
+            "nextPageToken": "page-3",
+            "pollingIntervalMillis": 1,
+            "items": [_message("new-1", "新しいコメント")],
+            "offlineAt": "2026-05-04T12:35:00Z",
+        },
+    ]
+    selected_batches = []
+
+    async def select_candidates(candidates):
+        selected_batches.append(candidates)
+        return candidates
+
+    source = YouTubeChatInputSource(
+        YouTubeChatConfig(
+            live_chat_id="live-chat-1",
+            min_poll_interval_seconds=0.001,
+            skip_initial_history=True,
+        ),
+        api_key="api-key",
+        fetch_json=lambda _url, _timeout: payloads.pop(0),
+        candidate_selector=select_candidates,
+    )
+
+    events = [event async for event in source.events()]
+
+    assert [event.text for event in events] == ["新しいコメント"]
+    assert len(selected_batches) == 1
+    assert [event.text for event in selected_batches[0]] == ["新しいコメント"]
+
+
+@pytest.mark.asyncio
 async def test_youtube_chat_source_selects_high_value_messages_per_poll() -> None:
     payloads = [
         {
@@ -125,6 +164,44 @@ async def test_youtube_chat_source_selects_high_value_messages_per_poll() -> Non
     assert events[0].metadata["selection_rank"] == 1
     assert events[0].metadata["selection_dropped_count"] == 2
     assert events[1].metadata["selection_rank"] == 2
+
+
+@pytest.mark.asyncio
+async def test_youtube_chat_source_applies_candidate_selector_after_lightweight_selection() -> None:
+    payloads = [
+        {
+            "nextPageToken": "page-2",
+            "pollingIntervalMillis": 1000,
+            "items": [
+                _message("msg-1", "w"),
+                _message("msg-2", "音量大丈夫？"),
+                _message("msg-3", "次なにやる？"),
+            ],
+            "offlineAt": "2026-05-04T12:35:00Z",
+        }
+    ]
+    seen_candidates = []
+
+    async def select_second(candidates):
+        seen_candidates.append(candidates)
+        return [candidates[1].model_copy(update={"metadata": {**candidates[1].metadata, "llm": True}})]
+
+    source = YouTubeChatInputSource(
+        YouTubeChatConfig(
+            live_chat_id="live-chat-1",
+            skip_initial_history=False,
+            max_selected_per_poll=2,
+        ),
+        api_key="api-key",
+        fetch_json=lambda _url, _timeout: payloads.pop(0),
+        candidate_selector=select_second,
+    )
+
+    events = [event async for event in source.events()]
+
+    assert [candidate.text for candidate in seen_candidates[0]] == ["音量大丈夫？", "次なにやる？"]
+    assert [event.text for event in events] == ["次なにやる？"]
+    assert events[0].metadata["llm"] is True
 
 
 @pytest.mark.asyncio

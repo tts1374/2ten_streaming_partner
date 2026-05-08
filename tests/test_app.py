@@ -12,6 +12,7 @@ def test_parser_defaults_to_placeholder_route() -> None:
     assert args.serve_overlay is False
     assert args.use_youtube_chat is False
     assert args.youtube_video_id is None
+    assert args.use_llm_chat_selection is False
 
 
 def test_parser_accepts_use_ollama_switch() -> None:
@@ -48,6 +49,27 @@ def test_parser_accepts_youtube_video_id_override() -> None:
     args = build_parser().parse_args(["--use-youtube-chat", "--youtube-video-id", "video-1"])
 
     assert args.youtube_video_id == "video-1"
+
+
+def test_parser_accepts_llm_chat_selection_switch() -> None:
+    args = build_parser().parse_args(["--use-youtube-chat", "--use-llm-chat-selection"])
+
+    assert args.use_llm_chat_selection is True
+
+
+def test_build_input_source_requires_ollama_for_llm_chat_selection(monkeypatch) -> None:
+    monkeypatch.setenv("YT_TEST_KEY", "api-key")
+    config = AppConfig(
+        youtube_chat=YouTubeChatConfig(live_chat_id="live-chat-1", api_key_env="YT_TEST_KEY")
+    )
+
+    try:
+        build_input_source(config, use_youtube_chat=True, use_llm_chat_selection=True)
+    except ValueError as exc:
+        assert "--use-ollama" in str(exc)
+        return
+
+    raise AssertionError("LLM chat selection should require an Ollama router")
 
 
 def test_parser_accepts_inspect_latency_command() -> None:
